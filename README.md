@@ -12,8 +12,15 @@ no audio, video or answers leave the device.
 - **Phase 2:** microphone input, camera view, the voice "ah" timbre, retest flow with a comparison to last
   time, a share card PNG (palette and title only), a calendar reminder for the retest, and iOS audio
   unlock on first tap.
-- **Visual styles:** *Fireworks* (default): each note bursts into sharp sparks at its height, in your color
-  for that note. *Soft glow*: the slow, blurred "mind's eye" field. Reduced motion always uses soft glow.
+- **Visual styles** (pick in the visualizer's Style menu). Reduced motion always uses soft glow.
+  - *Fireworks* (default): each note bursts into sharp sparks at its height, in your color for that note.
+  - *Water drops*: each note lands like a drop and sends out rings. Higher notes make smaller, quicker rings.
+  - *Geometry*: each note draws a mathematical curve, traced like a spirograph pen, then turns slowly.
+    The instrument picks the curve family (piano: rose, strings: spirograph, pure tone: Lissajous,
+    voice: flower). The note's pitch class sets the symmetry (3–11 petals or lobes), so octaves share a
+    shape. A pure tone's Lissajous figure uses the just-intonation ratio of the note above C, so a G (a
+    fifth, 3:2) draws a simple figure and dissonant intervals draw denser ones.
+  - *Soft glow*: the slow, blurred "mind's eye" field.
 - **Phase 3 (partly):** a short scripted conversational guide on the results page. **Not built:** anonymous
   data collection and "you vs. everyone", which the spec gates on ethics approval (REB/IRB) and consent
   text, and the YAMNet classifier (large dependency, not approved).
@@ -48,8 +55,9 @@ src/science/scoring.ts      consistency, Eagleman-style score, Spearman, pattern
 src/mapping/personalMap.ts  anchors → color for any pitch/timbre blend; smoothing
 src/mapping/defaultMap.ts   "a generic mapping" for the comparison toggle
 src/visuals/safety.ts       flash limiter + independent WCAG flash counter
-src/visuals/particles.ts    CPU sim: fireworks sparks + soft glows, luminance model (testable headlessly)
-src/visuals/scene.ts        Three.js instanced glows, spark streaks, camera layer, one bloom pass
+src/visuals/particles.ts    CPU sim for every style + luminance model (testable headlessly)
+src/visuals/shapes.ts       water-drop rings and geometry curves (rose, spirograph, Lissajous, flower)
+src/visuals/scene.ts        Three.js instanced glows, spark streaks, rings, curve dots, camera layer, one bloom pass
 src/visuals/shareCard.ts    share card PNG (palette + title)
 src/screens/                Landing, Setup, Calibration, ColorPicker, Results, Guide, Immersive, Share, Info
 src/storage/local.ts        localStorage wrapper (try/catch, in-memory fallback), schema migration, JSON export/import
@@ -100,8 +108,9 @@ These are places where the build departs from, or fills a gap in, the spec. Each
 - **Mic and camera:** requested only when picked, stopped (tracks ended) when you switch away or leave,
   including if you switch away while the permission prompt is still open. The mic never plays through
   the speakers. Nothing is recorded or uploaded.
-- **Flashes (fireworks):** at most 4 bursts per second; each burst covers a small part of the screen;
-  sparks fade over ≥ 0.9 s. All light still passes through the limiter below.
+- **Flashes (fireworks, water drops, geometry):** at most 4 bursts, 3 drops or 2 figures per second; each
+  covers a small part of the screen and fades over ≥ 0.9 s. All light still passes through the limiter below,
+  and the 10-clicks-per-second test runs for every style.
 - **Flashes (soft glow):** particles fade in over ≥ 0.35 s (0.9 s with reduced motion) and out over ≥ 1.6 s, and spawns
   are capped at 8/s (3/s reduced). On top of that, a limiter caps how fast scene luminance can rise and stops
   any upward swing that would exceed 3 WCAG flashes in a second. A second limiter channel tracks saturated red.

@@ -3,7 +3,7 @@
 Checked Oct 29, 2026 in a cloud Linux container (headless Chromium, software WebGL, fake mic and camera).
 ✅ = verified by an automated test or audit · ⚠️ = needs a check on real hardware or browsers · ⛔ = not built, by design.
 
-Test totals: 39 unit tests (Vitest), 3 end-to-end tests (Playwright), Lighthouse accessibility 100 and
+Test totals: 45 unit tests (Vitest), 4 end-to-end tests (Playwright), Lighthouse accessibility 100 and
 best practices 100, axe-core (WCAG 2.1 AA + best practice) with 0 violations on every screen.
 
 ## Phase 1
@@ -17,7 +17,7 @@ best practices 100, axe-core (WCAG 2.1 AA + best practice) with 0 violations on 
 | 5 | Results show palette, band and only supported patterns | ✅ | Unit fixtures (rising, shuffled, gray, flat) and E2E. |
 | 6 | Immersive ≥ 55 fps on a 2020-era laptop in Chrome, Firefox, Safari | ⚠️ | Not measurable here (software WebGL). Open with `?fps` on a real laptop. Fireworks draw ≤ 1,600 spark quads + ≤ 320 glows. |
 | 7 | Pure A4 sine shows the user's sine color at A4 (ΔE < 5) | ✅ | Unit, full pipeline: ΔE ≈ 2.7. |
-| 8 | Flash limiter test passes | ✅ | 10 clicks/s through features → particles → limiter: ≤ 3 flashes/s for fireworks, soft glow and reduced motion. Adversarial 10 Hz input also ≤ 3/s. |
+| 8 | Flash limiter test passes | ✅ | 10 clicks/s through features → particles → limiter: ≤ 3 flashes/s for fireworks, water drops, geometry, soft glow and reduced motion. Adversarial 10 Hz input also ≤ 3/s. |
 | 9 | Lighthouse accessibility ≥ 90 | ✅ | 100. |
 
 ## Phase 2
@@ -30,7 +30,8 @@ best practices 100, axe-core (WCAG 2.1 AA + best practice) with 0 violations on 
 | 4 | Works on iOS Safari (audio unlocks on first tap) | ⚠️ | Code: `audioSession.type = 'playback'`, a silent `<audio>` unlock, `Tone.start()` inside the tap, resume after backgrounding. Phone layout checked with iPhone 13 emulation (touch picking works, no sideways scroll). Needs a check on a real iPhone; WebKit isn't available here. |
 
 Also added in Phase 2: voice "ah" timbre (each voice sound is matched to itself in the unit test), a
-calendar reminder (.ics) for the retest, and the fireworks visual style.
+calendar reminder (.ics) for the retest, and three visual styles: fireworks, water drops and geometry.
+Each has tests for spawn caps and fade-out; geometry curves are tested to be closed and unit-sized.
 
 ## Phase 3
 

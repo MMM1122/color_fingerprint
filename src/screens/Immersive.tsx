@@ -22,7 +22,7 @@ import type { TimbreReferences } from '../audio/timbreMatch';
 import { topTimbre } from '../audio/timbreMatch';
 import { TRACKS, type TrackId } from '../audio/tracks';
 import { makeDefaultMap, makePersonalMap } from '../mapping/personalMap';
-import { ParticleField, type VisualStyle } from '../visuals/particles';
+import { ParticleField, VISUAL_STYLES, type VisualStyle } from '../visuals/particles';
 import { AssociatorScene } from '../visuals/scene';
 
 /** The warning shows every time immersive mode starts from a cold page load. */
@@ -67,8 +67,8 @@ function Warning({ onContinue }: { onContinue(): void }) {
         </label>
         <p className="quiet">
           {prefs.reducedMotion
-            ? 'With reduced motion on, you get the soft glow style. Untick it to see fireworks.'
-            : 'You will see fireworks: each note bursts into sparks in your color.'}
+            ? 'With reduced motion on, you get the soft glow style. Untick it to see fireworks, water drops or geometry.'
+            : 'You will start with fireworks: each note bursts into sparks in your color. Switch to water drops or geometry in the controls.'}
         </p>
         <div className="row">
           <button className="primary" autoFocus onClick={onContinue}>Start the visualizer</button>
@@ -139,6 +139,7 @@ function Visualizer() {
             onset: s.features.onset,
             flatness: s.features.flatness,
             silent: s.features.silent || !isPlaying(),
+            timbre: topTimbre(s.weights),
           },
           dt,
           now / 1000,
@@ -324,7 +325,9 @@ function Visualizer() {
         {status || readout}
         {showFps && fps != null && <span> ({fps} fps)</span>}
         {prefs.reducedMotion && (
-          <span className="rm-note">Reduced motion is on, so fireworks are off. Change it in the controls below.</span>
+          <span className="rm-note">
+            Reduced motion is on, so fireworks, water drops and geometry are off. Change it in the controls below.
+          </span>
         )}
       </div>
       <div
@@ -382,13 +385,17 @@ function Visualizer() {
             onChange={(e) => {
               const v = e.target.value as VisualStyle;
               setStyle(v);
-              // Picking fireworks is an explicit choice to allow bursts.
-              if (v === 'fireworks' && prefs.reducedMotion) setPrefs({ reducedMotion: false });
+              // Picking a moving style is an explicit choice to allow it.
+              if (v !== 'glow' && prefs.reducedMotion) setPrefs({ reducedMotion: false });
             }}
             aria-describedby="style-note"
           >
-            <option value="fireworks">Fireworks{prefs.reducedMotion ? ' (turns off reduced motion)' : ''}</option>
-            <option value="glow">Soft glow</option>
+            {VISUAL_STYLES.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
+                {o.id !== 'glow' && prefs.reducedMotion ? ' (turns off reduced motion)' : ''}
+              </option>
+            ))}
           </select>
         </label>
         <button
@@ -414,7 +421,9 @@ function Visualizer() {
         <button onClick={() => go('results')}>Exit</button>
       </div>
       <span id="style-note" className="visually-hidden">
-        {prefs.reducedMotion ? 'Fireworks are off while reduced motion is on.' : 'Fireworks burst on each note; soft glow drifts slowly.'}
+        Fireworks burst on each note. Water drops send out ripples. Geometry draws a curve for each note: its shape
+        comes from the instrument and its symmetry from the note. Soft glow drifts slowly.
+        {prefs.reducedMotion ? ' Only soft glow is available while reduced motion is on.' : ''}
       </span>
       <span id="view-note" className="visually-hidden">
         Camera view shows your colors over your camera. The picture stays on this device and is never recorded.

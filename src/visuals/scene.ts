@@ -8,6 +8,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { SPARK_CAPACITY, STREAK_SECONDS, type ParticleField } from './particles';
+import { PATTERNS, RIPPLES } from './shapes';
 
 const vertex = /* glsl */ `
   attribute vec3 iOffset;   // x, y, size
@@ -79,6 +80,64 @@ const sparkFragment = /* glsl */ `
   }
 `;
 
+/** Ripples: a thin glowing ring. The quad is sized to the ring; the shader draws the annulus. */
+const ringVertex = /* glsl */ `
+  attribute vec4 iRing;     // x, y, radius, thickness
+  attribute vec4 iColor;
+  varying vec2 vPos;
+  varying vec4 vRing;
+  varying vec4 vColor;
+  void main() {
+    vRing = iRing;
+    vColor = iColor;
+    float half_ = iRing.z + iRing.w * 4.0;
+    vec2 p = iRing.xy + position.xy * 2.0 * half_;
+    vPos = position.xy * 2.0 * half_;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 0.0, 1.0);
+  }
+`;
+
+const ringFragment = /* glsl */ `
+  uniform float uExposure;
+  varying vec2 vPos;
+  varying vec4 vRing;
+  varying vec4 vColor;
+  void main() {
+    float d = (length(vPos) - vRing.z) / vRing.w;
+    // Bright crest with a softer trough inside it, like light on a water ripple.
+    float a = exp(-d * d * 2.2) + 0.25 * exp(-(d + 2.2) * (d + 2.2) * 1.2);
+    if (a < 0.004) discard;
+    gl_FragColor = vec4(vColor.rgb * a * vColor.a * uExposure, 1.0);
+  }
+`;
+
+/** Geometry: small crisp dots along each curve. */
+const dotVertex = /* glsl */ `
+  attribute vec3 iDot;      // x, y, alpha
+  attribute vec3 iRgb;
+  uniform float uSize;
+  varying vec2 vUv;
+  varying vec4 vColor;
+  void main() {
+    vUv = position.xy;
+    vColor = vec4(iRgb, iDot.z);
+    vec2 p = iDot.xy + position.xy * uSize * 4.0;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 0.0, 1.0);
+  }
+`;
+
+const dotFragment = /* glsl */ `
+  uniform float uExposure;
+  varying vec2 vUv;
+  varying vec4 vColor;
+  void main() {
+    float r = length(vUv) * 4.0;
+    float a = exp(-r * r * 1.4);
+    if (a < 0.004) discard;
+    gl_FragColor = vec4(vColor.rgb * a * vColor.a * uExposure, 1.0);
+  }
+`;
+
 const toLinear = (x: number) => (x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4);
 
 export class AssociatorScene {
@@ -99,6 +158,14 @@ export class AssociatorScene {
   private sparkPos: THREE.InstancedBufferAttribute;
   private sparkColor: THREE.InstancedBufferAttribute;
   private sparkSize: THREE.InstancedBufferAttribute;
+  private ringGeometry: THREE.InstancedBufferGeometry;
+  private ringMaterial: THREE.ShaderMaterial;
+  private ringAttr: THREE.InstancedBufferAttribute;
+  private ringColor: THREE.InstancedBufferAttribute;
+  private dotGeometry: THREE.InstancedBufferGeometry;
+  private dotMaterial: THREE.ShaderMaterial;
+  private dotAttr: THREE.InstancedBufferAttribute;
+  private dotRgb: THREE.InstancedBufferAttribute;
   aspect = 1;
 
   constructor(private canvas: HTMLCanvasElement, capacity: number) {
@@ -155,6 +222,43 @@ export class AssociatorScene {
     sparkMesh.frustumCulled = false;
     sparkMesh.renderOrder = 1;
     this.scene.add(sparkMesh);
+
+    // Ripples
+    const additive = (vertexShader: string, fragmentShader: string, extra: Record<string, THREE.IUniform> = {}) =>
+      new THREE.ShaderMaterial({
+        vertexShader,
+        fragmentShader,
+        uniforms: { uExposure: { value: 1 }, ...extra },
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthTest: false,
+        depthWrite: false,
+      });
+    const instanced = (attrs: Record<string, THREE.InstancedBufferAttribute>) => {
+      const g = new THREE.InstancedBufferGeometry();
+      g.index = base.index;
+      g.setAttribute('position', base.getAttribute('position'));
+      for (const [k, v] of Object.entries(attrs)) g.setAttribute(k, v);
+      g.instanceCount = 0;
+      return g;
+    };
+    this.ringAttr = new THREE.InstancedBufferAttribute(new Float32Array(RIPPLES.capacity * 4), 4).setUsage(THREE.DynamicDrawUsage);
+    this.ringColor = new THREE.InstancedBufferAttribute(new Float32Array(RIPPLES.capacity * 4), 4).setUsage(THREE.DynamicDrawUsage);
+    this.ringGeometry = instanced({ iRing: this.ringAttr, iColor: this.ringColor });
+    this.ringMaterial = additive(ringVertex, ringFragment);
+    const ringMesh = new THREE.Mesh(this.ringGeometry, this.ringMaterial);
+    ringMesh.frustumCulled = false;
+    this.scene.add(ringMesh);
+
+    // Geometry dots
+    const dotCap = PATTERNS.capacity * PATTERNS.pointsPerPattern;
+    this.dotAttr = new THREE.InstancedBufferAttribute(new Float32Array(dotCap * 3), 3).setUsage(THREE.DynamicDrawUsage);
+    this.dotRgb = new THREE.InstancedBufferAttribute(new Float32Array(dotCap * 3), 3).setUsage(THREE.DynamicDrawUsage);
+    this.dotGeometry = instanced({ iDot: this.dotAttr, iRgb: this.dotRgb });
+    this.dotMaterial = additive(dotVertex, dotFragment, { uSize: { value: PATTERNS.dot } });
+    const dotMesh = new THREE.Mesh(this.dotGeometry, this.dotMaterial);
+    dotMesh.frustumCulled = false;
+    this.scene.add(dotMesh);
 
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
@@ -257,13 +361,46 @@ export class AssociatorScene {
     this.sparkSize.needsUpdate = true;
     this.sparkMaterial.uniforms.uExposure.value = field.exposure;
 
+    // Ripples
+    const rp = field.ripples;
+    const rA = this.ringAttr.array as Float32Array;
+    const rC = this.ringColor.array as Float32Array;
+    let q = 0;
+    for (let i = 0; i < rp.n; i++) {
+      if (!rp.active[i] || rp.alpha[i] <= 0.002) continue;
+      rA[q * 4] = rp.x[i];
+      rA[q * 4 + 1] = rp.y[i];
+      rA[q * 4 + 2] = rp.r[i];
+      rA[q * 4 + 3] = rp.thick[i];
+      rC[q * 4] = toLinear(rp.rgb[i * 3]);
+      rC[q * 4 + 1] = toLinear(rp.rgb[i * 3 + 1]);
+      rC[q * 4 + 2] = toLinear(rp.rgb[i * 3 + 2]);
+      rC[q * 4 + 3] = rp.alpha[i];
+      q++;
+    }
+    this.ringGeometry.instanceCount = q;
+    this.ringAttr.needsUpdate = true;
+    this.ringColor.needsUpdate = true;
+    this.ringMaterial.uniforms.uExposure.value = field.exposure;
+
+    // Geometry dots
+    const pd = field.patterns;
+    const dA = this.dotAttr.array as Float32Array;
+    const dC = this.dotRgb.array as Float32Array;
+    dA.set(pd.dots.subarray(0, pd.dotCount * 3));
+    for (let i = 0; i < pd.dotCount * 3; i++) dC[i] = toLinear(pd.dotRgb[i]);
+    this.dotGeometry.instanceCount = pd.dotCount;
+    this.dotAttr.needsUpdate = true;
+    this.dotRgb.needsUpdate = true;
+    this.dotMaterial.uniforms.uExposure.value = field.exposure;
+
     this.material.uniforms.uExposure.value = field.exposure;
     this.material.uniforms.uTime.value = reducedMotion ? 0 : timeSec;
     // Reduced motion: softer, wider glow instead of crisp shapes.
-    const fireworks = field.style === 'fireworks';
-    this.bloom.radius = reducedMotion ? 0.95 : fireworks ? 0.45 : 0.7;
-    this.bloom.threshold = fireworks ? 0.08 : 0.18;
-    this.bloom.strength = (fireworks ? 0.9 : 0.5) * field.exposure;
+    const crisp = field.style !== 'glow';
+    this.bloom.radius = reducedMotion ? 0.95 : crisp ? 0.45 : 0.7;
+    this.bloom.threshold = crisp ? 0.08 : 0.18;
+    this.bloom.strength = (field.style === 'fireworks' ? 0.9 : crisp ? 0.75 : 0.5) * field.exposure;
     const [r, gg, b] = field.background;
     this.renderer.setClearColor(new THREE.Color(toLinear(r), toLinear(gg), toLinear(b)), 1);
     this.composer.render();
@@ -273,6 +410,10 @@ export class AssociatorScene {
     this.setVideo(null);
     this.sparkGeometry.dispose();
     this.sparkMaterial.dispose();
+    this.ringGeometry.dispose();
+    this.ringMaterial.dispose();
+    this.dotGeometry.dispose();
+    this.dotMaterial.dispose();
     this.geometry.dispose();
     this.material.dispose();
     this.composer.dispose();

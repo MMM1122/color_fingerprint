@@ -21,8 +21,16 @@ import { MAP_MIDI_MAX, MAP_MIDI_MIN, SAFETY } from '../config/stimuli';
 import type { Oklch } from '../types';
 import { hueDelta, oklchToRgb01, relativeLuminance } from '../science/color';
 import { FlashLimiter, defaultLimiterOptions } from './safety';
+import { CURVE_FOR, PATTERNS, Patterns, RIPPLES, Ripples, curvePoints } from './shapes';
+import type { Timbre } from '../types';
 
-export type VisualStyle = 'fireworks' | 'glow';
+export type VisualStyle = 'fireworks' | 'ripples' | 'geometry' | 'glow';
+export const VISUAL_STYLES: { id: VisualStyle; label: string }[] = [
+  { id: 'fireworks', label: 'Fireworks' },
+  { id: 'ripples', label: 'Water drops' },
+  { id: 'geometry', label: 'Geometry' },
+  { id: 'glow', label: 'Soft glow' },
+];
 
 export type Particle = {
   active: boolean;
@@ -43,6 +51,8 @@ export type FieldInput = {
   onset: boolean;
   flatness: number;
   silent: boolean;
+  /** Closest timbre right now (picks the geometry curve). */
+  timbre?: Timbre;
 };
 
 export type FieldOptions = { reducedMotion: boolean; intensity: number; aspect: number; style?: VisualStyle };
@@ -113,6 +123,8 @@ export class ParticleField {
     age: 0, life: 1, fadeIn: 0.3, peak: 0, grain: 0, alpha: 0,
   }));
   readonly sparks = new Sparks();
+  readonly ripples = new Ripples();
+  readonly patterns = new Patterns();
   private lumLimiter: FlashLimiter;
   private redLimiter: FlashLimiter;
   private spawnCredit = 0;
@@ -133,7 +145,7 @@ export class ParticleField {
     this.redLimiter = new FlashLimiter(defaultLimiterOptions(opts.reducedMotion));
   }
 
-  /** Fireworks only without reduced motion; reduced motion always gets the soft glow. */
+  /** Bursty styles only without reduced motion; reduced motion always gets the soft glow. */
   get style(): VisualStyle {
     return this.opts.reducedMotion ? 'glow' : (this.opts.style ?? 'fireworks');
   }
@@ -208,6 +220,62 @@ export class ParticleField {
     this.lastBurst = now;
   }
 
+  /** One water drop: a few rings that start one after another and spread out. */
+  private drop(color: Oklch, midi: number, loud: number, now: number) {
+    const R = RIPPLES;
+    const rp = this.ripples;
+    const t = this.heightFor(midi);
+    const a = this.opts.aspect;
+    const cx = (this.rng() * 2 - 1) * a * 0.8;
+    const cy = -0.75 + t * 1.5;
+    const rings = Math.round(R.ringsPerDrop[0] + (R.ringsPerDrop[1] - R.ringsPerDrop[0]) * loud);
+    const rgb = oklchToRgb01(color);
+    const lumC = relativeLuminance(rgb);
+    const redC = redness(color);
+    // Higher notes: faster, thinner rings (like small, quick drops).
+    const speed = R.speed[0] + (R.speed[1] - R.speed[0]) * (0.4 * this.rng() + 0.6 * t);
+    for (let k = 0; k < rings; k++) {
+      const i = rp.take();
+      rp.x[i] = cx;
+      rp.y[i] = cy;
+      rp.r[i] = 0;
+      rp.speed[i] = speed * (1 - k * 0.08);
+      rp.thick[i] = (R.thickness[1] - (R.thickness[1] - R.thickness[0]) * t) * (0.8 + 0.4 * loud);
+      rp.age[i] = -k * R.ringGap;
+      rp.life[i] = R.life[0] + (R.life[1] - R.life[0]) * this.rng();
+      rp.rgb.set(rgb, i * 3);
+      rp.lum[i] = lumC;
+      rp.red[i] = redC;
+      rp.alpha[i] = 0;
+      rp.active[i] = 1;
+    }
+    this.recentBursts.push(now);
+    this.lastBurst = now;
+  }
+
+  /** One geometric figure at the note's height. */
+  private pattern(color: Oklch, midi: number, loud: number, timbre: Timbre, now: number) {
+    const P = PATTERNS;
+    const p = this.patterns.take();
+    const t = this.heightFor(midi);
+    const a = this.opts.aspect;
+    p.active = true;
+    p.kind = CURVE_FOR[timbre];
+    p.unit = curvePoints(p.kind, midi, P.pointsPerPattern);
+    p.size = (P.size[0] + (P.size[1] - P.size[0]) * loud) * (0.75 + 0.25 * this.opts.intensity);
+    p.cx = (this.rng() * 2 - 1) * (a - p.size) * 0.9;
+    p.cy = Math.max(-1 + p.size, Math.min(1 - p.size, -0.7 + t * 1.4));
+    p.angle = this.rng() * Math.PI * 2;
+    p.spin = (P.spin[0] + (P.spin[1] - P.spin[0]) * this.rng()) * (this.rng() < 0.5 ? -1 : 1);
+    p.age = 0;
+    p.life = P.life[0] + (P.life[1] - P.life[0]) * this.rng();
+    p.rgb = oklchToRgb01(color);
+    p.lum = relativeLuminance(p.rgb);
+    p.red = redness(color);
+    this.recentBursts.push(now);
+    this.lastBurst = now;
+  }
+
   update(input: FieldInput, dt: number, now: number): void {
     const r = this.opts.reducedMotion;
     const style = this.style;
@@ -225,12 +293,22 @@ export class ParticleField {
           this.burst(input.color, input.midi, this.loud, now);
         }
         this.spawnCredit += dt * 0.6; // faint background glows
+      } else if (style === 'ripples') {
+        const want = input.onset || (now - this.lastBurst > RIPPLES.idleDropEvery && this.loud > 0.08);
+        if (want && this.recentBursts.length < RIPPLES.maxDropsPerSec) this.drop(input.color, input.midi, this.loud, now);
+        this.spawnCredit += dt * 0.4;
+      } else if (style === 'geometry') {
+        const want = input.onset || (now - this.lastBurst > PATTERNS.idleEvery && this.loud > 0.08);
+        if (want && this.recentBursts.length < PATTERNS.maxPerSec) {
+          this.pattern(input.color, input.midi, this.loud, input.timbre ?? 'piano', now);
+        }
+        this.spawnCredit += dt * 0.4;
       } else {
         this.spawnCredit += dt * (r ? 1.2 : 2 + 4 * this.loud);
         if (input.onset && !r) this.spawnCredit += 1.5;
       }
       while (this.spawnCredit >= 1 && this.recentSpawns.length < maxPerSec) {
-        this.spawnGlow(input.color, input.midi, this.loud, input.flatness, style === 'fireworks');
+        this.spawnGlow(input.color, input.midi, this.loud, input.flatness, style !== 'glow');
         this.recentSpawns.push(now);
         this.spawnCredit -= 1;
       }
@@ -238,8 +316,8 @@ export class ParticleField {
       // Background: a very dark, low-chroma echo of the current color, changing over seconds.
       const k = 1 - Math.exp(-dt / 2.5);
       const target: Oklch = [0.1 + 0.04 * input.color[0], Math.min(0.02, input.color[1] * 0.2), input.color[2]];
-      if (style === 'fireworks') {
-        target[0] = 0.055 + 0.02 * input.color[0]; // night sky
+      if (style !== 'glow') {
+        target[0] = 0.055 + 0.02 * input.color[0]; // night sky / dark water
         target[1] = Math.min(0.01, target[1]);
       }
       this.bgLab = [
@@ -307,6 +385,70 @@ export class ParticleField {
       lum += sp.alpha[i] * sp.lum[i] * cover * (1 + BLOOM_GAIN * 1.5);
       red += sp.alpha[i] * sp.red[i] * cover * (1 + BLOOM_GAIN * 1.5);
     }
+
+    // ---- Ripples: rings spread at constant speed and thin out as they grow ----
+    const rp = this.ripples;
+    for (let i = 0; i < rp.n; i++) {
+      if (!rp.active[i]) continue;
+      rp.age[i] += dt;
+      const age = rp.age[i];
+      if (age < 0) {
+        rp.alpha[i] = 0;
+        continue;
+      }
+      if (age >= rp.life[i]) {
+        rp.active[i] = 0;
+        rp.alpha[i] = 0;
+        continue;
+      }
+      rp.r[i] = rp.speed[i] * age;
+      const fin = Math.min(1, age / RIPPLES.fadeIn);
+      const fout = (1 - age / rp.life[i]) ** 1.5;
+      rp.alpha[i] = 0.9 * fin * fout * (0.6 + 0.4 * this.opts.intensity);
+      const cover = (2 * Math.PI * Math.max(rp.r[i], rp.thick[i]) * 2 * rp.thick[i] * 0.6) / area;
+      lum += rp.alpha[i] * rp.lum[i] * cover * (1 + BLOOM_GAIN);
+      red += rp.alpha[i] * rp.red[i] * cover * (1 + BLOOM_GAIN);
+    }
+
+    // ---- Patterns: pen traces the curve, then it turns slowly and fades ----
+    const pats = this.patterns;
+    const P = PATTERNS;
+    let d = 0;
+    for (const pt of pats.list) {
+      if (!pt.active) continue;
+      pt.age += dt;
+      if (pt.age >= pt.life) {
+        pt.active = false;
+        continue;
+      }
+      pt.angle += pt.spin * dt;
+      const drawn = Math.min(1, pt.age / P.drawSeconds);
+      const fout = Math.min(1, (pt.life - pt.age) / (pt.life * 0.45));
+      const fin = Math.min(1, pt.age / P.fadeIn);
+      const base = 0.5 * fin * fout * (0.6 + 0.4 * this.opts.intensity);
+      const cos = Math.cos(pt.angle);
+      const sin = Math.sin(pt.angle);
+      const count = pt.unit.length / 2;
+      const head = drawn * (count - 1);
+      for (let k = 0; k < count; k++) {
+        if (k > head) break;
+        const ux = pt.unit[k * 2];
+        const uy = pt.unit[k * 2 + 1];
+        // The pen tip glows a little brighter while it is drawing.
+        const tip = drawn < 1 ? Math.max(0, 1 - (head - k) / 18) * 0.6 : 0;
+        pats.dots[d * 3] = pt.cx + (ux * cos - uy * sin) * pt.size;
+        pats.dots[d * 3 + 1] = pt.cy + (ux * sin + uy * cos) * pt.size;
+        pats.dots[d * 3 + 2] = Math.min(1, base * (1 + tip));
+        pats.dotRgb[d * 3] = pt.rgb[0] + (1 - pt.rgb[0]) * tip * 0.6;
+        pats.dotRgb[d * 3 + 1] = pt.rgb[1] + (1 - pt.rgb[1]) * tip * 0.6;
+        pats.dotRgb[d * 3 + 2] = pt.rgb[2] + (1 - pt.rgb[2]) * tip * 0.6;
+        const cover = (Math.PI * (2 * P.dot) ** 2 * 0.5) / area;
+        lum += pats.dots[d * 3 + 2] * pt.lum * cover * (1 + BLOOM_GAIN);
+        red += pats.dots[d * 3 + 2] * pt.red * cover * (1 + BLOOM_GAIN);
+        d++;
+      }
+    }
+    pats.dotCount = d;
 
     lum = Math.min(lum, 1);
     this.rawLuminance = lum;

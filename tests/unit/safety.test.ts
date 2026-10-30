@@ -45,7 +45,7 @@ describe('safety test from spec section 8', () => {
       const start = Math.round((k / 10) * SR);
       for (let i = 0; i < 400; i++) audio[start + i] = 0.95 * (i % 2 ? 1 : -1) * Math.exp(-i / 80);
     }
-    for (const [reducedMotion, style] of [[false, 'fireworks'], [false, 'glow'], [true, 'glow']] as const) {
+    for (const [reducedMotion, style] of [[false, 'fireworks'], [false, 'ripples'], [false, 'geometry'], [false, 'glow'], [true, 'glow']] as const) {
       const fx = new FeatureExtractor(SR);
       const field = new ParticleField({ reducedMotion, intensity: 1, aspect: 16 / 9, style }, mulberry32(3));
       const shown: number[] = [];
@@ -86,5 +86,39 @@ describe('fireworks', () => {
     for (let f = 0; f < FPS; f++) field.update({ color: [0.7, 0.15, 250], midi: 70, rms: 0.3, onset: true, flatness: 0.1, silent: false }, 1 / FPS, f / FPS);
     expect(field.style).toBe('glow');
     expect(field.sparks.active.reduce((a, b) => a + b, 0)).toBe(0);
+  });
+});
+
+describe('water drops and geometry', () => {
+  const run = (style: 'ripples' | 'geometry', onsetsPerSec: number, seconds: number) => {
+    const field = new ParticleField({ reducedMotion: false, intensity: 1, aspect: 16 / 9, style }, mulberry32(4));
+    let maxRings = 0;
+    let maxPatterns = 0;
+    const every = Math.round(FPS / onsetsPerSec);
+    for (let f = 0; f < FPS * seconds; f++) {
+      field.update({ color: [0.75, 0.14, 210], midi: 67, rms: 0.3, onset: f % every === 0, flatness: 0.1, silent: false, timbre: 'sine' }, 1 / FPS, f / FPS);
+      maxRings = Math.max(maxRings, field.ripples.active.reduce((a, b) => a + b, 0));
+      maxPatterns = Math.max(maxPatterns, field.patterns.list.filter((p) => p.active).length);
+    }
+    return { field, maxRings, maxPatterns };
+  };
+
+  it('drops make rings, capped per second, and rings grow then fade', () => {
+    const { field, maxRings } = run('ripples', 20, 3);
+    expect(maxRings).toBeGreaterThan(4);
+    expect(maxRings).toBeLessThanOrEqual(3 * 4 * 3); // ≤ 3 drops/s × ≤ 4 rings × ~3 s
+    const radii = Array.from(field.ripples.r).filter((_, i) => field.ripples.active[i]);
+    expect(Math.max(...radii)).toBeGreaterThan(0.3);
+    for (let f = 0; f < FPS * 4; f++) field.update({ color: null, midi: null, rms: 0, onset: false, flatness: 0, silent: true }, 1 / FPS, 3 + f / FPS);
+    expect(field.ripples.active.reduce((a, b) => a + b, 0)).toBe(0);
+  });
+
+  it('geometry draws curves (≤ 2 per second), traces them in, and fades out', () => {
+    const { field, maxPatterns } = run('geometry', 20, 3);
+    expect(maxPatterns).toBeGreaterThanOrEqual(2);
+    expect(maxPatterns).toBeLessThanOrEqual(7);
+    expect(field.patterns.dotCount).toBeGreaterThan(400);
+    for (let f = 0; f < FPS * 5; f++) field.update({ color: null, midi: null, rms: 0, onset: false, flatness: 0, silent: true }, 1 / FPS, 3 + f / FPS);
+    expect(field.patterns.dotCount).toBe(0);
   });
 });

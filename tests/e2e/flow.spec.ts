@@ -223,13 +223,13 @@ test.describe('reduced motion from the device', () => {
     await page.getByRole('button', { name: 'Play test tone' }).click();
     await page.getByRole('button', { name: 'Play test tone again' }).waitFor();
     await page.getByRole('button', { name: 'Hear music in your colors' }).click();
-    await expect(page.getByText(/Untick it to see fireworks/)).toBeVisible();
+    await expect(page.getByText(/Untick it to see fireworks, water drops or geometry/)).toBeVisible();
     await page.getByRole('button', { name: 'Start the visualizer' }).click();
     await page.mouse.move(300, 300);
-    await expect(page.getByText(/Reduced motion is on, so fireworks are off/)).toBeVisible();
+    await expect(page.getByText(/Reduced motion is on, so fireworks, water drops and geometry are off/)).toBeVisible();
     await expect(page.getByRole('combobox', { name: 'Style' })).toHaveValue('glow');
-    await page.getByRole('combobox', { name: 'Style' }).selectOption('fireworks');
-    await expect(page.getByRole('combobox', { name: 'Style' })).toHaveValue('fireworks');
+    await page.getByRole('combobox', { name: 'Style' }).selectOption('ripples');
+    await expect(page.getByRole('combobox', { name: 'Style' })).toHaveValue('ripples');
     await expect(page.getByRole('button', { name: 'Reduce motion' })).toHaveAttribute('aria-pressed', 'false');
     await expect(page.getByText(/Reduced motion is on/)).toHaveCount(0);
   });
