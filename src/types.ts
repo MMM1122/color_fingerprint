@@ -1,6 +1,7 @@
 /** Data model from spec section 5. */
 
-export type Timbre = 'piano' | 'sine' | 'strings';
+/** 'voice' (a sung "ah") was added in Phase 2. */
+export type Timbre = 'piano' | 'sine' | 'strings' | 'voice';
 
 export type Stimulus = {
   id: string;

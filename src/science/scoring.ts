@@ -212,6 +212,8 @@ export function buildFingerprint(
   flags: Fingerprint['flags'],
   createdAt = new Date().toISOString(),
 ): Fingerprint {
+  // Consistency and patterns describe the latest session (the spec's within-session measure).
+  // The personal map uses every session's answers, so retests make it more accurate.
   const latest = sessions[sessions.length - 1]?.answers ?? [];
   const c = scoreConsistency(latest);
   const p = detectPatterns(latest, stimuli, c.overall);
@@ -219,7 +221,7 @@ export function buildFingerprint(
     schemaVersion: 1,
     createdAt,
     sessions,
-    anchors: buildAnchors(latest, stimuli),
+    anchors: buildAnchors(sessions.flatMap((s) => s.answers), stimuli),
     consistency: { overall: c.overall, perStimulus: c.perStimulus },
     patterns: { pitchLightnessRho: p.pitchLightnessRho, timbreHueGaps: p.timbreHueGaps },
     flags,

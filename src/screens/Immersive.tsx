@@ -11,7 +11,9 @@ import {
   readFrame,
   resumeSource,
   sampleRate,
+  startMic,
   stimulusArray,
+  stopMic,
   stopSource,
   trackBuffer,
 } from '../audio/engine';
@@ -20,7 +22,7 @@ import type { TimbreReferences } from '../audio/timbreMatch';
 import { topTimbre } from '../audio/timbreMatch';
 import { TRACKS, type TrackId } from '../audio/tracks';
 import { makeDefaultMap, makePersonalMap } from '../mapping/personalMap';
-import { ParticleField } from '../visuals/particles';
+import { ParticleField, type VisualStyle } from '../visuals/particles';
 import { AssociatorScene } from '../visuals/scene';
 
 /** The warning shows every time immersive mode starts from a cold page load. */
@@ -72,7 +74,8 @@ function Warning({ onContinue }: { onContinue(): void }) {
   );
 }
 
-type Source = TrackId | 'file';
+type Source = TrackId | 'file' | 'mic';
+type View = 'associator' | 'projector';
 
 function Visualizer() {
   const { fingerprint, prefs, go } = useApp();
@@ -87,6 +90,9 @@ function Visualizer() {
   const [controlsVisible, setControlsVisible] = useState(true);
   const [readout, setReadout] = useState('');
   const [fps, setFps] = useState<number | null>(null);
+  const [view, setView] = useState<View>('associator');
+  const [style, setStyle] = useState<VisualStyle>('fireworks');
+  const camera = useRef<{ stream: MediaStream; el: HTMLVideoElement } | null>(null);
   const showFps = typeof location !== 'undefined' && new URLSearchParams(location.search).has('fps');
 
   const live = useRef<{ mapper: LiveMapper; field: ParticleField; scene: AssociatorScene } | null>(null);
@@ -103,7 +109,7 @@ function Visualizer() {
       if (disposed) return;
       const map = fingerprint ? makePersonalMap(fingerprint.anchors) : makeDefaultMap();
       const scene = new AssociatorScene(canvasRef.current!, 320);
-      const field = new ParticleField({ reducedMotion: prefs.reducedMotion, intensity, aspect: scene.aspect });
+      const field = new ParticleField({ reducedMotion: prefs.reducedMotion, intensity, aspect: scene.aspect, style });
       const mapper = new LiveMapper(sampleRate(), refs, map);
       live.current = { mapper, field, scene };
       onResize = () => {
@@ -172,10 +178,52 @@ function Visualizer() {
     live.current?.field.setReducedMotion(prefs.reducedMotion);
   }, [prefs.reducedMotion]);
   useEffect(() => {
+    if (live.current) live.current.field.opts.style = style;
+  }, [style]);
+  useEffect(() => {
     if (live.current && fingerprint) {
       live.current.mapper.map = usePersonal ? makePersonalMap(fingerprint.anchors) : makeDefaultMap();
     }
   }, [usePersonal, fingerprint]);
+
+  // Camera: asked for only when the user picks the camera view, and stopped as soon as they leave it.
+  useEffect(() => {
+    if (view !== 'projector') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        const el = document.createElement('video');
+        el.muted = true;
+        el.playsInline = true;
+        el.srcObject = stream;
+        // Track the stream immediately so cleanup can always stop it, even mid-startup.
+        camera.current = { stream, el };
+        await el.play();
+        if (cancelled) return;
+        live.current?.scene.setVideo(el);
+        setStatus('');
+      } catch {
+        camera.current?.stream.getTracks().forEach((t) => t.stop());
+        camera.current = null;
+        if (!cancelled) {
+          setStatus("The camera didn't start. Allow it in your browser's site settings, or stay in the mind's eye view.");
+          setView('associator');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+      live.current?.scene.setVideo(null);
+      camera.current?.stream.getTracks().forEach((t) => t.stop());
+      if (camera.current) camera.current.el.srcObject = null;
+      camera.current = null;
+    };
+  }, [view]);
 
   // Controls fade after 3 s without input, and come back on any pointer or key activity.
   useEffect(() => {
@@ -204,6 +252,13 @@ function Visualizer() {
 
   async function start(src: Source) {
     try {
+      if (src === 'mic') {
+        setStatus('Waiting for microphone permission…');
+        await startMic();
+        setStatus('');
+        setPlaying(true);
+        return;
+      }
       if (src === 'file') {
         if (!fileBuffer.current) return;
         playSource(fileBuffer.current, true);
@@ -215,11 +270,25 @@ function Visualizer() {
       }
       setPlaying(true);
     } catch (err) {
-      setStatus(`That didn't play: ${(err as Error).message}`);
+      if (src === 'mic') {
+        if ((err as Error).message.startsWith('Microphone was turned off')) return;
+        setStatus("The microphone didn't start. Allow it in your browser's site settings, or pick a track.");
+        setSource('rain');
+        setPlaying(false);
+      } else {
+        setStatus(`That didn't play: ${(err as Error).message}`);
+      }
     }
   }
 
   function togglePlay() {
+    if (source === 'mic') {
+      if (isPlaying()) {
+        stopMic();
+        setPlaying(false);
+      } else start('mic');
+      return;
+    }
     if (isPlaying()) {
       pauseSource();
       setPlaying(false);
@@ -256,7 +325,9 @@ function Visualizer() {
         role="toolbar"
         aria-label="Visualizer controls"
       >
-        <button onClick={togglePlay} aria-pressed={playing}>{playing ? 'Pause' : 'Play'}</button>
+        <button onClick={togglePlay} aria-pressed={playing}>
+          {source === 'mic' ? (playing ? 'Stop listening' : 'Listen') : playing ? 'Pause' : 'Play'}
+        </button>
         <label>
           <span className="visually-hidden">Music</span>
           <select
@@ -276,6 +347,7 @@ function Visualizer() {
             ))}
             {fileName && <option value="file">{fileName}</option>}
             <option value="upload">Open a file from your device…</option>
+            <option value="mic">Microphone (live)</option>
           </select>
         </label>
         <input
@@ -296,10 +368,21 @@ function Visualizer() {
           <input type="range" min={0.2} max={1} step={0.05} value={intensity} onChange={(e) => setIntensity(Number(e.target.value))} />
         </label>
         <label>
+          <span className="visually-hidden">Style</span>
+          <select
+            value={prefs.reducedMotion ? 'glow' : style}
+            onChange={(e) => setStyle(e.target.value as VisualStyle)}
+            aria-describedby="style-note"
+          >
+            <option value="fireworks" disabled={prefs.reducedMotion}>Fireworks</option>
+            <option value="glow">Soft glow</option>
+          </select>
+        </label>
+        <label>
           <span className="visually-hidden">View</span>
-          <select value="associator" onChange={() => undefined} aria-describedby="view-note">
-            <option value="associator">Mind's eye view</option>
-            <option value="projector" disabled>Camera view (coming later)</option>
+          <select value={view} onChange={(e) => setView(e.target.value as View)} aria-describedby="view-note">
+            <option value="associator">Plain background</option>
+            <option value="projector">Camera view</option>
           </select>
         </label>
         {fingerprint && (
@@ -310,7 +393,12 @@ function Visualizer() {
         )}
         <button onClick={() => go('results')}>Exit</button>
       </div>
-      <span id="view-note" className="visually-hidden">The camera view arrives in a later version.</span>
+      <span id="style-note" className="visually-hidden">
+        {prefs.reducedMotion ? 'Fireworks are off while reduced motion is on.' : 'Fireworks burst on each note; soft glow drifts slowly.'}
+      </span>
+      <span id="view-note" className="visually-hidden">
+        Camera view shows your colors over your camera. The picture stays on this device and is never recorded.
+      </span>
     </div>
   );
 }

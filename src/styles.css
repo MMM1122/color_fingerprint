@@ -116,6 +116,12 @@ legend { padding: 0; margin-bottom: 0.5rem; font-weight: 600; }
 .listen { display: flex; flex-direction: column; gap: 0.75rem; align-items: flex-start; }
 .listen .play { width: 7rem; height: 7rem; border-radius: 50%; padding: 0; font-weight: 600; border-width: 2px; }
 .listen .play[aria-pressed='true'] { background: rgba(255, 255, 255, 0.18); }
+@media (max-width: 759px) {
+  .listen { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 1rem; row-gap: 0.25rem; align-items: center; }
+  .listen h1 { grid-column: 1 / -1; margin-bottom: 0.25rem; }
+  .listen .play { width: 4.75rem; height: 4.75rem; grid-row: span 2; }
+  .listen p { margin: 0; font-size: var(--t-sm); }
+}
 
 /* ---------- Color picker ---------- */
 .picker { display: grid; gap: 1rem; }
@@ -178,3 +184,9 @@ table.text-palette th, table.text-palette td { text-align: left; padding: 0.25re
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }
+
+/* ---------- Guide ---------- */
+.guide .turn { max-width: var(--measure); margin: 0; padding: 0.7rem 1rem; border-radius: 1rem; }
+.guide .turn.guide { background: var(--n2); }
+.guide .turn.you { background: var(--n95); color: var(--n1); margin-left: auto; width: fit-content; }
+.guide .dot { display: inline-block; width: 0.9em; height: 0.9em; border-radius: 50%; margin-right: 0.5em; vertical-align: -0.1em; box-shadow: 0 0 0 1px rgba(255,255,255,0.4); }

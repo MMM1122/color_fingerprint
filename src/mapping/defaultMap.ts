@@ -5,7 +5,7 @@
 import { MAP_MIDI_MAX, MAP_MIDI_MIN } from '../config/stimuli';
 import type { Oklch, Timbre } from '../types';
 
-export const DEFAULT_HUES: Record<Timbre, number> = { piano: 255, sine: 160, strings: 35 };
+export const DEFAULT_HUES: Record<Timbre, number> = { piano: 255, sine: 160, strings: 35, voice: 330 };
 export const DEFAULT_CHROMA = 0.13;
 export const DEFAULT_L_RANGE: [number, number] = [0.42, 0.88];
 

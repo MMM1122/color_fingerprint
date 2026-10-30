@@ -4,12 +4,13 @@
  */
 import type { Stimulus, Timbre } from '../types';
 
-export const TIMBRES: readonly Timbre[] = ['piano', 'sine', 'strings'] as const;
+export const TIMBRES: readonly Timbre[] = ['piano', 'sine', 'strings', 'voice'] as const;
 
 export const TIMBRE_LABELS: Record<Timbre, string> = {
   piano: 'Piano',
   sine: 'Pure tone',
   strings: 'Bowed strings',
+  voice: 'Voice "ah"',
 };
 
 /** C3, A3, F4, D5, B5: about 3 octaves, all different note names. */
@@ -49,6 +50,13 @@ export const STIMULI: Stimulus[] = TIMBRES.flatMap((timbre) =>
     durationMs: STIMULUS_DURATION_MS,
   })),
 );
+
+export const TRIAL_COUNT = STIMULI.length * REPETITIONS;
+/** Rough duration for copy: about 6 s per trial including listening. */
+export const ESTIMATED_MINUTES = Math.round((TRIAL_COUNT * 6) / 60);
+
+/** A retest is most meaningful after at least this many days (spec: "Retest in 2+ days"). */
+export const RETEST_MIN_DAYS = 2;
 
 /** Target loudness for every stimulus and built-in track (ITU-R BS.1770 K-weighted, LUFS-like). */
 export const TARGET_LOUDNESS_LUFS = -23;

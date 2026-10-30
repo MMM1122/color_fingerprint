@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { MAX_REPLAYS, STIMULI, STIMULUS_DURATION_MS } from '../config/stimuli';
+import { MAX_REPLAYS, STIMULI, STIMULUS_DURATION_MS, TRIAL_COUNT } from '../config/stimuli';
 import { useApp } from '../store/app';
 import { playStimulus, prepareStimuli, stopStimulus } from '../audio/engine';
 import { answerFromOklch } from '../science/color';
@@ -29,7 +29,7 @@ export default function Calibration() {
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   const index = progress?.index ?? 0;
-  const total = progress?.order.length ?? 45;
+  const total = progress?.order.length ?? TRIAL_COUNT;
   const trial = progress?.order[index];
   const stimulus = trial ? byId.get(trial.stimulusId) : undefined;
 
@@ -95,7 +95,7 @@ export default function Calibration() {
   if (!progress || !trial || !stimulus) return null;
 
   const done = index;
-  const avgMs = done > 0 ? progress.activeMs / done : 6000;
+  const avgMs = done > 0 ? progress.activeMs / done : 4500;
   const leftMin = Math.max(1, Math.round(((total - done) * (avgMs + STIMULUS_DURATION_MS)) / 60000));
   const replaysLeft = MAX_REPLAYS - Math.max(0, plays - 1);
 

@@ -5,7 +5,7 @@ import TopBar from './TopBar';
 
 /** Setup and safety. Nothing makes a sound until both confirmations are ticked. */
 export default function Setup() {
-  const { prefs, setPrefs, completeSetup, startCalibration, go, fingerprint } = useApp();
+  const { prefs, setPrefs, completeSetup, startCalibration, go, fingerprint, progress } = useApp();
   const [headphones, setHeadphones] = useState(false);
   const [notice, setNotice] = useState(false);
   const [vol, setVol] = useState(getVolume());
@@ -112,7 +112,7 @@ export default function Setup() {
           <p className="quiet">This is a playful experiment, not a medical or diagnostic test.</p>
           <div className="row">
             <button className="primary" disabled={!confirmed || !heardTone} onClick={() => begin('calibration')}>
-              Start listening
+              {progress?.retest ? 'Start the retest' : progress && progress.index > 0 ? 'Continue listening' : 'Start listening'}
             </button>
             {fingerprint && (
               <button disabled={!confirmed || !heardTone} onClick={() => begin('immersive')}>

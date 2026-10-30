@@ -12,7 +12,7 @@ export type TrackId = 'rain' | 'bloom' | 'voices';
 export const TRACKS: { id: TrackId; title: string; description: string }[] = [
   { id: 'rain', title: 'Rain on the keys', description: 'Piano arpeggios across three octaves' },
   { id: 'bloom', title: 'Slow bloom', description: 'Bowed-string chords with a pure-tone melody' },
-  { id: 'voices', title: 'Three voices', description: 'Piano, strings and pure tone taking turns' },
+  { id: 'voices', title: 'Four voices', description: 'Piano, strings, pure tone and a sung "ah" taking turns' },
 ];
 
 type Note = { t: number; midi: number; dur: number; timbre: Timbre; vel: number };
@@ -62,6 +62,7 @@ function voicesNotes(): Note[] {
     { timbre: 'piano', line: [48, 52, 55, 60, 55, 52], step: 0.32, dur: 1.4 },
     { timbre: 'strings', line: [55, 57, 59, 60, 62, 64], step: 0.5, dur: 0.65 },
     { timbre: 'sine', line: [72, 69, 65, 62, 60], step: 0.45, dur: 0.55 },
+    { timbre: 'voice', line: [64, 67, 69, 67, 64], step: 0.6, dur: 0.75 },
   ];
   for (let round = 0; round < 2; round++) {
     for (const p of phrases) {
@@ -77,7 +78,7 @@ export function renderTrack(id: TrackId, sampleRate: number): Float32Array {
   const end = Math.max(...notes.map((n) => n.t + n.dur)) + 1;
   const out = new Float32Array(Math.ceil(end * sampleRate));
   notes.forEach((n, i) => {
-    const fade = n.timbre === 'strings' ? 250 : n.timbre === 'sine' ? 40 : 15;
+    const fade = n.timbre === 'strings' || n.timbre === 'voice' ? 200 : n.timbre === 'sine' ? 40 : 15;
     const tone = renderTone(n.timbre, n.midi, sampleRate, { durationMs: n.dur * 1000, fadeMs: fade, velocity: n.vel, seed: i + 1 });
     const offset = Math.round(n.t * sampleRate);
     for (let k = 0; k < tone.length && offset + k < out.length; k++) out[offset + k] += tone[k];

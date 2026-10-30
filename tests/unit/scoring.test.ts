@@ -64,7 +64,7 @@ describe('patterns', () => {
   const lightnessRising = () =>
     STIMULI.flatMap((s) => {
       const l = 0.3 + ((s.midi - 48) / 35) * 0.6;
-      const c = answerFromOklch([l, 0.1, s.timbre === 'piano' ? 250 : s.timbre === 'sine' ? 140 : 30]);
+      const c = answerFromOklch([l, 0.1, { piano: 250, sine: 140, strings: 30, voice: 320 }[s.timbre]]);
       return ([1, 2, 3] as const).map((r) => ans(s.id, r, c));
     });
 
@@ -96,7 +96,7 @@ describe('patterns', () => {
 
   it('detects timbre → hue gaps above 30° and ignores near-gray timbres', () => {
     const p = detectPatterns(lightnessRising(), STIMULI, 80);
-    expect(p.timbreHue.length).toBe(3);
+    expect(p.timbreHue.length).toBe(6); // every pair of the 4 timbres
     const gray = STIMULI.flatMap((s) =>
       ([1, 2, 3] as const).map((r) => ans(s.id, r, answerFromOklch([0.6, 0.01, s.timbre === 'piano' ? 0 : 180]))),
     );
@@ -109,5 +109,53 @@ describe('patterns', () => {
     );
     const p = detectPatterns(flat, STIMULI, 90);
     expect(p.none).toBe(true);
+  });
+});
+
+describe('retest', () => {
+  it('compares two sessions: within-session scores and the shift between sessions', async () => {
+    const { compareSessions, retestDue, reminderIcs } = await import('../../src/science/retest');
+    const s1 = {
+      startedAt: '2026-10-01T10:00:00Z',
+      answers: [
+        { ...ans('A', 1, answerFromOklch([0.6, 0.1, 200])), timestamp: '2026-10-01T10:00:00Z' },
+        { ...ans('A', 2, answerFromOklch([0.6, 0.1, 200])), timestamp: '2026-10-01T10:01:00Z' },
+      ],
+    };
+    const s2 = {
+      startedAt: '2026-10-04T10:00:00Z',
+      answers: [
+        { ...ans('A', 1, answerFromOklch([0.6, 0.1, 200])), timestamp: '2026-10-04T10:00:00Z' },
+        { ...ans('A', 2, answerFromOklch([0.6, 0.1, 200])), timestamp: '2026-10-04T10:01:00Z' },
+      ],
+    };
+    const same = compareSessions(s1, s2);
+    expect(same.before).toBe(0);
+    expect(same.after).toBe(0);
+    expect(same.between).toBeCloseTo(0, 6);
+    expect(same.compared).toBe(1);
+    expect(same.daysApart).toBeCloseTo(3, 3);
+
+    const moved = compareSessions(s1, {
+      ...s2,
+      answers: s2.answers.map((a) => ({ ...a, color: answerFromOklch([0.6, 0.1, 20]) })),
+    });
+    expect(moved.between!).toBeGreaterThan(30);
+
+    expect(retestDue(s1, new Date('2026-10-02T10:01:00Z'))).toBe(false);
+    expect(retestDue(s1, new Date('2026-10-03T10:02:00Z'))).toBe(true);
+    const ics = reminderIcs(new Date('2026-10-06T00:00:00'), 'https://example.org');
+    expect(ics).toContain('BEGIN:VEVENT');
+    expect(ics).toContain('DTSTART:20261006T190000');
+  });
+});
+
+describe('guide reflections', () => {
+  it('only describes the user\'s own color and word', async () => {
+    const { reflect } = await import('../../src/screens/Guide');
+    expect(reflect('Bright', [0.8, 0.1, 90])).toMatch(/agree: both are on the light side/);
+    expect(reflect('Dark', [0.8, 0.1, 90])).toMatch(/lighter than your word/);
+    expect(reflect('Cool', [0.6, 0.12, 230])).toMatch(/cool side/);
+    expect(reflect('Sharp', [0.6, 0.12, 230])).toMatch(/all yours/);
   });
 });

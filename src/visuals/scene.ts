@@ -7,7 +7,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import type { ParticleField } from './particles';
+import { SPARK_CAPACITY, STREAK_SECONDS, type ParticleField } from './particles';
 
 const vertex = /* glsl */ `
   attribute vec3 iOffset;   // x, y, size
@@ -41,6 +41,44 @@ const fragment = /* glsl */ `
   }
 `;
 
+/** Sparks: a sharp streak stretched along the direction of travel. */
+const sparkVertex = /* glsl */ `
+  attribute vec4 iSpark;    // x, y, vx, vy
+  attribute vec4 iColor;    // linear rgb, alpha
+  attribute float iSize;
+  uniform float uStreak;
+  varying vec2 vUv;
+  varying vec4 vColor;
+  void main() {
+    vUv = position.xy;
+    vColor = iColor;
+    vec2 v = iSpark.zw;
+    float speed = length(v);
+    vec2 dir = speed > 1e-4 ? v / speed : vec2(1.0, 0.0);
+    vec2 nrm = vec2(-dir.y, dir.x);
+    float len = iSize * 2.0 + speed * uStreak;
+    // Tail trails behind the head: shift the quad backwards along the motion.
+    vec2 p = iSpark.xy + dir * (position.x * len - len * 0.35) + nrm * position.y * iSize * 2.0;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 0.0, 1.0);
+  }
+`;
+
+const sparkFragment = /* glsl */ `
+  uniform float uExposure;
+  varying vec2 vUv;
+  varying vec4 vColor;
+  void main() {
+    // Bright head at the front, fading tail behind it; crisp across the width.
+    float along = vUv.x + 0.5;               // 0 = tail end, 1 = head end
+    float across = abs(vUv.y) * 2.0;
+    float w = exp(-across * across * 6.0);
+    float tail = smoothstep(0.0, 0.85, along) * (1.0 - smoothstep(0.9, 1.0, along) * 0.6);
+    float a = w * tail;
+    if (a < 0.003) discard;
+    gl_FragColor = vec4(vColor.rgb * a * vColor.a * uExposure, 1.0);
+  }
+`;
+
 const toLinear = (x: number) => (x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4);
 
 export class AssociatorScene {
@@ -55,6 +93,12 @@ export class AssociatorScene {
   private grains: THREE.InstancedBufferAttribute;
   private material: THREE.ShaderMaterial;
   private geometry: THREE.InstancedBufferGeometry;
+  private video: { el: HTMLVideoElement; mesh: THREE.Mesh; tex: THREE.VideoTexture } | null = null;
+  private sparkGeometry: THREE.InstancedBufferGeometry;
+  private sparkMaterial: THREE.ShaderMaterial;
+  private sparkPos: THREE.InstancedBufferAttribute;
+  private sparkColor: THREE.InstancedBufferAttribute;
+  private sparkSize: THREE.InstancedBufferAttribute;
   aspect = 1;
 
   constructor(private canvas: HTMLCanvasElement, capacity: number) {
@@ -87,12 +131,72 @@ export class AssociatorScene {
     this.mesh.frustumCulled = false;
     this.scene.add(this.mesh);
 
+    // Sparks
+    this.sparkGeometry = new THREE.InstancedBufferGeometry();
+    this.sparkGeometry.index = base.index;
+    this.sparkGeometry.setAttribute('position', base.getAttribute('position'));
+    this.sparkPos = new THREE.InstancedBufferAttribute(new Float32Array(SPARK_CAPACITY * 4), 4).setUsage(THREE.DynamicDrawUsage);
+    this.sparkColor = new THREE.InstancedBufferAttribute(new Float32Array(SPARK_CAPACITY * 4), 4).setUsage(THREE.DynamicDrawUsage);
+    this.sparkSize = new THREE.InstancedBufferAttribute(new Float32Array(SPARK_CAPACITY), 1).setUsage(THREE.DynamicDrawUsage);
+    this.sparkGeometry.setAttribute('iSpark', this.sparkPos);
+    this.sparkGeometry.setAttribute('iColor', this.sparkColor);
+    this.sparkGeometry.setAttribute('iSize', this.sparkSize);
+    this.sparkGeometry.instanceCount = 0;
+    this.sparkMaterial = new THREE.ShaderMaterial({
+      vertexShader: sparkVertex,
+      fragmentShader: sparkFragment,
+      uniforms: { uExposure: { value: 1 }, uStreak: { value: STREAK_SECONDS } },
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthTest: false,
+      depthWrite: false,
+    });
+    const sparkMesh = new THREE.Mesh(this.sparkGeometry, this.sparkMaterial);
+    sparkMesh.frustumCulled = false;
+    sparkMesh.renderOrder = 1;
+    this.scene.add(sparkMesh);
+
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.5, 0.7, 0.18);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
     this.resize();
+  }
+
+  /**
+   * Projector view: draw the live camera behind the particles, dimmed and mirrored. The frames are
+   * only drawn to this canvas; they are never stored or sent anywhere.
+   */
+  setVideo(el: HTMLVideoElement | null) {
+    if (this.video) {
+      this.scene.remove(this.video.mesh);
+      this.video.mesh.geometry.dispose();
+      (this.video.mesh.material as THREE.Material).dispose();
+      this.video.tex.dispose();
+      this.video = null;
+    }
+    if (!el) return;
+    const tex = new THREE.VideoTexture(el);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const mat = new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(0.3, 0.3, 0.3), depthTest: false, depthWrite: false });
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
+    mesh.renderOrder = -1;
+    mesh.frustumCulled = false;
+    this.scene.add(mesh);
+    this.video = { el, mesh, tex };
+    el.addEventListener('loadedmetadata', () => this.layoutVideo());
+    this.layoutVideo();
+  }
+
+  private layoutVideo() {
+    if (!this.video) return;
+    const { el, mesh } = this.video;
+    const va = el.videoWidth && el.videoHeight ? el.videoWidth / el.videoHeight : 4 / 3;
+    // "Cover" the screen, cropping whichever side overflows; negative x mirrors like a selfie view.
+    const w = va > this.aspect ? 2 * va : 2 * this.aspect;
+    const h = va > this.aspect ? 2 : (2 * this.aspect) / va;
+    mesh.scale.set(-w, h, 1);
   }
 
   resize() {
@@ -104,6 +208,7 @@ export class AssociatorScene {
     this.camera.left = -this.aspect;
     this.camera.right = this.aspect;
     this.camera.updateProjectionMatrix();
+    this.layoutVideo();
   }
 
   render(field: ParticleField, timeSec: number, reducedMotion: boolean) {
@@ -127,17 +232,47 @@ export class AssociatorScene {
     this.offsets.needsUpdate = true;
     this.colors.needsUpdate = true;
     this.grains.needsUpdate = true;
+    // Sparks
+    const sp = field.sparks;
+    const sPos = this.sparkPos.array as Float32Array;
+    const sCol = this.sparkColor.array as Float32Array;
+    const sSize = this.sparkSize.array as Float32Array;
+    let m = 0;
+    for (let i = 0; i < sp.n; i++) {
+      if (!sp.active[i] || sp.alpha[i] <= 0.002) continue;
+      sPos[m * 4] = sp.x[i];
+      sPos[m * 4 + 1] = sp.y[i];
+      sPos[m * 4 + 2] = sp.vx[i];
+      sPos[m * 4 + 3] = sp.vy[i];
+      sCol[m * 4] = toLinear(sp.rgb[i * 3]);
+      sCol[m * 4 + 1] = toLinear(sp.rgb[i * 3 + 1]);
+      sCol[m * 4 + 2] = toLinear(sp.rgb[i * 3 + 2]);
+      sCol[m * 4 + 3] = sp.alpha[i];
+      sSize[m] = sp.size[i];
+      m++;
+    }
+    this.sparkGeometry.instanceCount = m;
+    this.sparkPos.needsUpdate = true;
+    this.sparkColor.needsUpdate = true;
+    this.sparkSize.needsUpdate = true;
+    this.sparkMaterial.uniforms.uExposure.value = field.exposure;
+
     this.material.uniforms.uExposure.value = field.exposure;
     this.material.uniforms.uTime.value = reducedMotion ? 0 : timeSec;
     // Reduced motion: softer, wider glow instead of crisp shapes.
-    this.bloom.radius = reducedMotion ? 0.95 : 0.7;
-    this.bloom.strength = 0.5 * field.exposure;
+    const fireworks = field.style === 'fireworks';
+    this.bloom.radius = reducedMotion ? 0.95 : fireworks ? 0.45 : 0.7;
+    this.bloom.threshold = fireworks ? 0.08 : 0.18;
+    this.bloom.strength = (fireworks ? 0.9 : 0.5) * field.exposure;
     const [r, gg, b] = field.background;
     this.renderer.setClearColor(new THREE.Color(toLinear(r), toLinear(gg), toLinear(b)), 1);
     this.composer.render();
   }
 
   dispose() {
+    this.setVideo(null);
+    this.sparkGeometry.dispose();
+    this.sparkMaterial.dispose();
     this.geometry.dispose();
     this.material.dispose();
     this.composer.dispose();

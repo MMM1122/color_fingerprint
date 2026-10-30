@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react';
 import { useApp } from '../store/app';
 import { oklchToHex } from '../science/color';
 import TopBar from './TopBar';
+import { ESTIMATED_MINUTES } from '../config/stimuli';
+import { retestDue } from '../science/retest';
 
 /**
  * Calm animated preview: a few soft color fields drifting slowly. No flashing; brightness never
@@ -46,7 +48,8 @@ function Preview({ still }: { still: boolean }) {
 }
 
 export default function Landing() {
-  const { go, fingerprint, progress, prefs } = useApp();
+  const { go, fingerprint, progress, prefs, startRetest } = useApp();
+  const due = !progress && fingerprint && retestDue(fingerprint.sessions[fingerprint.sessions.length - 1]);
   return (
     <div className="landing">
       <Preview still={prefs.reducedMotion} />
@@ -60,13 +63,23 @@ export default function Landing() {
         <p>Listen to a few sounds, pick the colors they bring to mind, then hear music in your own colors.</p>
         <div className="row" style={{ marginTop: '1.75rem' }}>
           <button className="primary" onClick={() => go('setup')}>
-            {progress ? 'Continue finding your colors' : 'Find your colors'}
+            {progress ? 'Continue finding your colors' : fingerprint ? 'Start over' : 'Find your colors'}
           </button>
           {fingerprint && (
             <button onClick={() => go('results')}>See your colors</button>
           )}
+          {due && (
+            <button
+              onClick={() => {
+                startRetest();
+                go('setup');
+              }}
+            >
+              Retest your colors
+            </button>
+          )}
         </div>
-        {!progress && !fingerprint && <p className="quiet" style={{ marginTop: '1rem' }}>Takes about 5 minutes. Headphones help.</p>}
+        {!progress && !fingerprint && <p className="quiet" style={{ marginTop: '1rem' }}>Takes about {ESTIMATED_MINUTES} minutes. Headphones help.</p>}
       </div>
       <footer className="row quiet">
         <span>A playful experiment, not a medical or diagnostic test.</span>

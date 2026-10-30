@@ -111,7 +111,7 @@ export class WeightSmoother {
   private w: TimbreWeights | null = null;
   constructor(private tauMs: number = ANALYSIS.timbreSmoothingMs) {}
   update(target: TimbreWeights | null, dtMs: number): TimbreWeights {
-    if (!target) return this.w ?? { piano: 1 / 3, sine: 1 / 3, strings: 1 / 3 };
+    if (!target) return this.w ?? (Object.fromEntries(TIMBRES.map((t) => [t, 1 / TIMBRES.length])) as TimbreWeights);
     if (!this.w) this.w = { ...target };
     else {
       const k = 1 - Math.exp(-dtMs / this.tauMs);

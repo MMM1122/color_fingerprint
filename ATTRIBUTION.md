@@ -4,8 +4,8 @@
 
 | File / source | What it is | Source | License |
 | --- | --- | --- | --- |
-| Calibration sounds (piano, pure tone, bowed strings × C3, A3, F4, D5, B5) | Synthesized in the browser by `src/audio/synth.ts` | Original code in this repo | Same as this project |
-| Built-in tracks "Rain on the keys", "Slow bloom", "Three voices" | Generated in the browser by `src/audio/tracks.ts` | Original code in this repo | Same as this project |
+| Calibration sounds (piano, pure tone, bowed strings, sung "ah" × C3, A3, F4, D5, B5) | Synthesized in the browser by `src/audio/synth.ts` | Original code in this repo | Same as this project |
+| Built-in tracks "Rain on the keys", "Slow bloom", "Four voices" | Generated in the browser by `src/audio/tracks.ts` | Original code in this repo | Same as this project |
 
 The synthesized piano and strings are **placeholders**. Spec section 3 asks for openly licensed instrument
 samples, and choosing them is an open decision (spec section 11). To use real samples, put the files in

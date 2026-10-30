@@ -49,10 +49,14 @@ export function About() {
           Color Fingerprint measures your sound-to-color associations, then uses them to color music. Everything
           runs in your browser. No account, and no audio or answers leave your device.
         </p>
+        <p>
+          The microphone and camera are only used if you pick them in the visualizer, and only while you're there.
+          They're processed on your device and never recorded or uploaded.
+        </p>
         <h2 style={{ fontSize: 'var(--t-lg)' }}>Sounds</h2>
         <p>
-          The piano, pure-tone and bowed-string sounds, and the three built-in tracks, are generated in your browser
-          by this site's own code. They are stand-ins until openly licensed recordings are chosen.
+          The piano, pure-tone, bowed-string and sung "ah" sounds, and the three built-in tracks, are generated in
+          your browser by this site's own code. They are stand-ins until openly licensed recordings are chosen.
         </p>
         <h2 style={{ fontSize: 'var(--t-lg)' }}>Research</h2>
         <ul style={{ maxWidth: 'var(--measure)' }}>

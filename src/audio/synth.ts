@@ -25,6 +25,12 @@ function rand(seed: number) {
   };
 }
 
+/** Formant envelope for a sung /a/ ("ah"): F1 ≈ 730 Hz, F2 ≈ 1090 Hz, F3 ≈ 2440 Hz (classic adult values). */
+function vowelAh(hz: number): number {
+  const peak = (f0: number, bw: number, g: number) => g / (1 + ((hz - f0) / bw) ** 2);
+  return 0.04 + peak(730, 90, 1) + peak(1090, 110, 0.55) + peak(2440, 170, 0.3) + peak(3400, 250, 0.12);
+}
+
 /** Body-resonance curve for the bowed-string placeholder (rough violin/cello body peaks). */
 function stringBody(hz: number): number {
   const peak = (f0: number, bw: number, g: number) => g / (1 + ((hz - f0) / bw) ** 2);
@@ -62,6 +68,26 @@ export function renderTone(timbre: Timbre, midi: number, sampleRate: number, opt
     // Short hammer thump.
     const thumpLen = Math.min(n, Math.round(0.012 * sampleRate));
     for (let i = 0; i < thumpLen; i++) out[i] += 0.08 * r() * (1 - i / thumpLen);
+  } else if (timbre === 'voice') {
+    // Sung "ah": glottal-like source (harmonics falling ~12 dB/octave) shaped by vowel formants,
+    // with gentle vibrato after onset and a breathy noise floor.
+    const vibRate = 5.0;
+    const vibDepth = 0.006;
+    const partials: { k: number; amp: number; ph: number }[] = [];
+    for (let k = 1; k <= 60; k++) {
+      if (k * f0 > Math.min(5000, nyq * 0.9)) break;
+      partials.push({ k, amp: (1 / k ** 1.0) * vowelAh(k * f0), ph: (r() + 1) * Math.PI });
+    }
+    let phase = 0;
+    for (let i = 0; i < n; i++) {
+      const t = i / sampleRate;
+      const vib = 1 + vibDepth * Math.min(1, Math.max(0, (t - 0.2) / 0.3)) * Math.sin(twoPi * vibRate * t);
+      phase += (twoPi * f0 * vib) / sampleRate;
+      let s = 0;
+      for (const p of partials) s += p.amp * Math.sin(p.k * phase + p.ph);
+      const attack = Math.min(1, t / 0.07);
+      out[i] = s * attack + 0.006 * r() * attack;
+    }
   } else {
     // Bowed string: sawtooth-like harmonics shaped by a body curve, with vibrato and bow noise.
     const vibRate = 5.3;

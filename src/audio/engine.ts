@@ -56,9 +56,54 @@ function assertGate() {
   if (!gateOpen) throw new Error('Sound is blocked until setup is confirmed.');
 }
 
-/** Must be called from a user gesture (also unlocks iOS Safari). */
+/** A short silent WAV, built at runtime (no file to license or fetch). */
+function silentWavUrl(): string {
+  const n = 800; // 0.1 s at 8 kHz, 8-bit mono
+  const bytes = new Uint8Array(44 + n);
+  const dv = new DataView(bytes.buffer);
+  const w = (o: number, str: string) => [...str].forEach((c, i) => (bytes[o + i] = c.charCodeAt(0)));
+  w(0, 'RIFF'); dv.setUint32(4, 36 + n, true); w(8, 'WAVE'); w(12, 'fmt ');
+  dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, 8000, true); dv.setUint32(28, 8000, true); dv.setUint16(32, 1, true); dv.setUint16(34, 8, true);
+  w(36, 'data'); dv.setUint32(40, n, true);
+  bytes.fill(128, 44);
+  let bin = '';
+  bytes.forEach((b) => (bin += String.fromCharCode(b)));
+  return `data:audio/wav;base64,${btoa(bin)}`;
+}
+
+let unlocked = false;
+
+/**
+ * Must be called from a user gesture (tap or click). On iOS Safari this also:
+ *  - asks for a "playback" audio session so the ringer switch doesn't mute Web Audio (Safari 17+),
+ *  - plays a silent <audio> element, the older workaround for the same problem,
+ *  - resumes the context when the page comes back from the background.
+ */
 export async function unlockAudio(): Promise<void> {
+  try {
+    const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
+    if (session) session.type = 'playback';
+  } catch {
+    /* not supported */
+  }
+  if (!unlocked) {
+    unlocked = true;
+    try {
+      const el = new Audio(silentWavUrl());
+      el.setAttribute('playsinline', '');
+      el.play().catch(() => undefined);
+    } catch {
+      /* ignore */
+    }
+    document.addEventListener('visibilitychange', () => {
+      const ctx = audioContext();
+      if (document.visibilityState === 'visible' && ctx.state !== 'running') ctx.resume().catch(() => undefined);
+    });
+  }
   await Tone.start();
+  const ctx = audioContext();
+  if (ctx.state !== 'running') await ctx.resume().catch(() => undefined);
   ensureGraph();
 }
 
@@ -210,10 +255,55 @@ export function stopSource(): void {
     current.dispose();
     current = null;
   }
+  stopMic();
 }
 
 export function isPlaying(): boolean {
-  return current?.state === 'started';
+  return current?.state === 'started' || micStream != null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Microphone (Phase 2)                                                */
+/* ------------------------------------------------------------------ */
+
+let micStream: MediaStream | null = null;
+let micNode: MediaStreamAudioSourceNode | null = null;
+/** Bumped by every stop, so a permission prompt that resolves late can't turn the mic back on. */
+let micGeneration = 0;
+
+/**
+ * Ask for the microphone only now (when the user picks it). The signal goes to the analyser only,
+ * never to the speakers, so there is no feedback. Nothing is recorded or uploaded.
+ */
+export async function startMic(): Promise<void> {
+  assertGate();
+  const { analyser } = ensureGraph();
+  stopSource();
+  const gen = ++micGeneration;
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+    video: false,
+  });
+  if (gen !== micGeneration) {
+    stream.getTracks().forEach((t) => t.stop());
+    throw new Error('Microphone was turned off before it started.');
+  }
+  micStream = stream;
+  micNode = audioContext().createMediaStreamSource(stream);
+  micNode.connect(analyser);
+}
+
+/** Stop the microphone completely (the browser's recording indicator turns off). */
+export function stopMic(): void {
+  micGeneration++;
+  micNode?.disconnect();
+  micStream?.getTracks().forEach((t) => t.stop());
+  micNode = null;
+  micStream = null;
+}
+
+export function micActive(): boolean {
+  return micStream != null;
 }
 
 /** Copy the latest analysis frame (2048 samples) into `out`. */

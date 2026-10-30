@@ -10,7 +10,7 @@ describe('trial order', () => {
     const rng = mulberry32(42);
     for (let i = 0; i < 1000; i++) {
       const order = generateTrialOrder(STIMULI, REPETITIONS, rng);
-      expect(order.length).toBe(45);
+      expect(order.length).toBe(STIMULI.length * REPETITIONS);
       expect(hasBackToBack(order)).toBe(false);
     }
   });
@@ -45,7 +45,7 @@ describe('mapping', () => {
   });
 
   it('fills missing anchors from neighbours and uses the default map for a missing timbre', () => {
-    const answers = STIMULI.filter((s) => s.timbre !== 'strings').flatMap((s) =>
+    const answers = STIMULI.filter((s) => s.timbre !== 'strings' && s.timbre !== 'voice').flatMap((s) =>
       ([1, 2, 3] as const).map((r) =>
         ans(s.id, r, s.id === 'piano-F4' ? null : answerFromOklch([0.5, 0.1, 100])),
       ),
@@ -54,7 +54,7 @@ describe('mapping', () => {
     expect(anchors.piano[65]).toBeNull();
     const map = makePersonalMap(anchors);
     expect(map.colorFor('piano', 65)[0]).toBeCloseTo(anchors.piano[57]![0], 2);
-    expect(map.missingTimbres).toEqual(['strings']);
+    expect(map.missingTimbres).toEqual(['strings', 'voice']);
     expect(map.colorFor('strings', 65)[1]).toBeLessThan(0.08); // reduced chroma
   });
 
@@ -63,7 +63,7 @@ describe('mapping', () => {
       ([1, 2, 3] as const).map((r) => ans(s.id, r, answerFromOklch([0.6, 0.1, s.timbre === 'sine' ? 140 : 300]))),
     );
     const map = makePersonalMap(buildAnchors(answers, STIMULI));
-    const onlySine = map.blend(69, { sine: 1, piano: 0, strings: 0 });
+    const onlySine = map.blend(69, { sine: 1, piano: 0, strings: 0, voice: 0 });
     expect(onlySine).toEqual(map.colorFor('sine', 69));
   });
 });

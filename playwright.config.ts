@@ -4,8 +4,9 @@ export default defineConfig({
   testDir: 'tests/e2e',
   timeout: 240_000,
   use: {
+    permissions: ['microphone', 'camera'],
     baseURL: 'http://localhost:4173',
-    launchOptions: { args: ['--autoplay-policy=no-user-gesture-required', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] },
+    launchOptions: { args: ['--autoplay-policy=no-user-gesture-required', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] },
   },
   webServer: {
     command: 'npx vite build && npx vite preview --port 4173 --strictPort',

@@ -44,7 +44,7 @@ describe('timbre matching', () => {
     for (const s of STIMULI) {
       const buf = renderStimulus(s, SR);
       const fx = new FeatureExtractor(SR);
-      const sums: Record<Timbre, number> = { piano: 0, sine: 0, strings: 0 };
+      const sums: Record<Timbre, number> = { piano: 0, sine: 0, strings: 0, voice: 0 };
       for (const { frame, start } of frames(buf)) {
         const f = fx.analyze(frame, (start / SR) * 1000);
         const v = timbreVector(f);
@@ -59,7 +59,7 @@ describe('timbre matching', () => {
   it('a pure A4 sine through the pipeline shows the user\'s sine color at A4 (ΔE < 5)', () => {
     // A user whose timbres have clearly different colors, with lightness rising by pitch.
     const answers = STIMULI.flatMap((s) => {
-      const hue = s.timbre === 'piano' ? 250 : s.timbre === 'sine' ? 140 : 30;
+      const hue = { piano: 250, sine: 140, strings: 30, voice: 320 }[s.timbre];
       const c = answerFromOklch([0.35 + ((s.midi - 48) / 35) * 0.5, 0.11, hue]);
       return ([1, 2, 3] as const).map((r) => ans(s.id, r, c));
     });
@@ -81,7 +81,7 @@ describe('timbre matching on the built-in tracks (approximate)', () => {
     const refs = defaultReferences(SR);
     const buf = renderTrack('rain', SR);
     const fx = new FeatureExtractor(SR);
-    const counts: Record<Timbre, number> = { piano: 0, sine: 0, strings: 0 };
+    const counts: Record<Timbre, number> = { piano: 0, sine: 0, strings: 0, voice: 0 };
     for (const { frame, start } of frames(buf, 2048, 2048)) {
       const f = fx.analyze(frame, (start / SR) * 1000);
       const v = timbreVector(f);

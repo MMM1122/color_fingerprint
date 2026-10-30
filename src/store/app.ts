@@ -6,7 +6,7 @@ import { buildFingerprint } from '../science/scoring';
 import type { Answer, Fingerprint } from '../types';
 import { load, loadFingerprint, remove, save, saveFingerprint } from '../storage/local';
 
-export type Screen = 'landing' | 'setup' | 'calibration' | 'results' | 'immersive' | 'learn' | 'about';
+export type Screen = 'landing' | 'setup' | 'calibration' | 'results' | 'immersive' | 'share' | 'learn' | 'about';
 
 export type CalibrationProgress = {
   startedAt: string;
@@ -15,6 +15,8 @@ export type CalibrationProgress = {
   answers: Answer[];
   /** Total ms spent answering, for the time-left estimate. */
   activeMs: number;
+  /** True when this run is a retest that will be compared with the saved fingerprint. */
+  retest?: boolean;
 };
 
 type Prefs = { reducedMotion: boolean; colorVisionDifference?: boolean };
@@ -30,6 +32,7 @@ type State = {
   setPrefs(p: Partial<Prefs>): void;
   completeSetup(): void;
   startCalibration(): void;
+  startRetest(): void;
   recordAnswer(a: Answer, ms: number): void;
   finishCalibration(): void;
   discardProgress(): void;
@@ -74,6 +77,18 @@ export const useApp = create<State>((set, get) => ({
     save('progress', progress);
     set({ progress });
   },
+  startRetest: () => {
+    const progress: CalibrationProgress = {
+      startedAt: new Date().toISOString(),
+      order: generateTrialOrder(STIMULI, REPETITIONS),
+      index: 0,
+      answers: [],
+      activeMs: 0,
+      retest: true,
+    };
+    save('progress', progress);
+    set({ progress });
+  },
   recordAnswer: (a, ms) => {
     const p = get().progress;
     if (!p) return;
@@ -84,7 +99,8 @@ export const useApp = create<State>((set, get) => ({
   finishCalibration: () => {
     const p = get().progress;
     if (!p) return;
-    const prev = get().fingerprint?.sessions ?? [];
+    // A first test replaces any old fingerprint; a retest adds a session to it.
+    const prev = p.retest ? (get().fingerprint?.sessions ?? []) : [];
     const fp = buildFingerprint([...prev, { startedAt: p.startedAt, answers: p.answers }], STIMULI, {
       colorVisionDifference: get().prefs.colorVisionDifference,
     });

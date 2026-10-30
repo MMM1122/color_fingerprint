@@ -1,17 +1,20 @@
 import { useMemo, useRef, useState } from 'react';
-import { PITCHES_MIDI, RESEARCH_REFERENCE, STIMULI, TIMBRES, TIMBRE_LABELS, midiToName } from '../config/stimuli';
+import { ESTIMATED_MINUTES, PITCHES_MIDI, RESEARCH_REFERENCE, RETEST_MIN_DAYS, STIMULI, TIMBRES, TIMBRE_LABELS, TRIAL_COUNT, midiToName } from '../config/stimuli';
+import { compareSessions, daysSince } from '../science/retest';
 import { useApp } from '../store/app';
 import { BAND_TEXT, consistencyBand, detectPatterns, groupByStimulus, scoreConsistency } from '../science/scoring';
 import { describeColor, oklchToHex } from '../science/color';
-import { downloadText, fingerprintFromJson, fingerprintToJson, isPersistent } from '../storage/local';
+import { fingerprintFromJson } from '../storage/local';
 import TopBar from './TopBar';
+import Guide from './Guide';
 
 const CARD_TITLES = ['Your palette', 'Your consistency', 'Your patterns', 'Hear it'];
 
 export default function Results() {
-  const { fingerprint, go, setFingerprint, discardProgress, startCalibration, setupDone } = useApp();
+  const { fingerprint, go, setFingerprint, startRetest, setupDone } = useApp();
   const [step, setStep] = useState(0);
   const [importError, setImportError] = useState<string | null>(null);
+  const [guideOpen, setGuideOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
@@ -20,7 +23,9 @@ export default function Results() {
     const answers = fingerprint.sessions[fingerprint.sessions.length - 1]?.answers ?? [];
     const c = scoreConsistency(answers);
     const p = detectPatterns(answers, STIMULI, c.overall);
-    return { answers, c, p, groups: groupByStimulus(answers) };
+    const n = fingerprint.sessions.length;
+    const retest = n >= 2 ? compareSessions(fingerprint.sessions[n - 2], fingerprint.sessions[n - 1]) : null;
+    return { answers, c, p, groups: groupByStimulus(answers), retest };
   }, [fingerprint]);
 
   if (!fingerprint || !data) {
@@ -29,7 +34,7 @@ export default function Results() {
         <TopBar />
         <div className="page stack">
           <h1 style={{ fontSize: 'var(--t-xl)' }}>No colors yet</h1>
-          <p>Listen to 45 short sounds and pick a color for each. It takes about 5 minutes.</p>
+          <p>Listen to {TRIAL_COUNT} short sounds and pick a color for each. It takes about {ESTIMATED_MINUTES} minutes.</p>
           <div className="row">
             <button className="primary" onClick={() => go('setup')}>Find your colors</button>
             <button onClick={() => fileRef.current?.click()}>Import a saved fingerprint</button>
@@ -41,7 +46,8 @@ export default function Results() {
     );
   }
 
-  const { c, p, groups } = data;
+  const { c, p, groups, retest } = data;
+  const sinceLast = daysSince(fingerprint.sessions[fingerprint.sessions.length - 1]);
   const band = c.overall != null ? consistencyBand(c.overall) : null;
   const moveTo = (i: number) => {
     setStep(i);
@@ -120,6 +126,33 @@ export default function Results() {
           </p>
         </details>
       )}
+      {retest && retest.before != null && retest.after != null && (
+        <div className="panel">
+          <h2 style={{ fontSize: 'var(--t-md)' }}>Since last time</h2>
+          <p>
+            {retest.daysApart < 1 ? 'Earlier today' : `${Math.round(retest.daysApart)} day${Math.round(retest.daysApart) === 1 ? '' : 's'} ago`}, your repeat colors were{' '}
+            {BAND_TEXT[consistencyBand(retest.before)]}. This time they were {BAND_TEXT[consistencyBand(retest.after)]}.
+            {consistencyBand(retest.after) === consistencyBand(retest.before)
+              ? ' About as steady as before.'
+              : retest.after < retest.before
+                ? ' That is steadier than before.'
+                : ' That is less steady than before.'}
+          </p>
+          {retest.between != null && (
+            <p>
+              Between your two visits, your average color for each sound moved{' '}
+              {retest.between < 45 ? 'very little' : retest.between < 90 ? 'somewhat' : 'a lot'}.
+            </p>
+          )}
+          <details>
+            <summary>The numbers for both visits</summary>
+            <p className="quiet" style={{ marginTop: '0.75rem' }}>
+              Within-visit consistency (mean CIELUV ΔE between repeats): {retest.before.toFixed(1)} before, {retest.after.toFixed(1)} now.
+              {retest.between != null && <> Shift of each sound's average color between visits: {retest.between.toFixed(1)}, across {retest.compared} sounds.</>}
+            </p>
+          </details>
+        </div>
+      )}
     </>,
     <>
       <ul className="stack" style={{ paddingLeft: '1.2rem', maxWidth: 'var(--measure)' }}>
@@ -139,6 +172,16 @@ export default function Results() {
         {p.none && <li>Your colors don't follow the common patterns, which is interesting too.</li>}
       </ul>
       <p>These patterns describe your answers today. They don't say whether you have synesthesia; only a fuller test can tell more.</p>
+      <div className="panel stack">
+        {guideOpen ? (
+          <>
+            <h2 style={{ fontSize: 'var(--t-md)' }}>Talk it through</h2>
+            <Guide answers={data.answers} pitchLightness={p.pitchLightness} />
+          </>
+        ) : (
+          <button onClick={() => setGuideOpen(true)}>Talk it through with a short guide</button>
+        )}
+      </div>
       {fingerprint.flags.colorVisionDifference && (
         <p>You mentioned a color vision difference. That can affect which colors you pick, so keep it in mind when reading these results.</p>
       )}
@@ -149,33 +192,25 @@ export default function Results() {
         <button className="primary" onClick={() => go(setupDone ? 'immersive' : 'setup')}>
           Hear music in your colors
         </button>
+        <button onClick={() => go('share')}>Save and share</button>
       </div>
       <div className="panel stack">
-        <h2 style={{ fontSize: 'var(--t-md)' }}>Keep your fingerprint</h2>
-        <p className="quiet">
-          {isPersistent()
-            ? 'It is saved in this browser. Download a copy to keep it safe or move it to another device.'
-            : "This browser isn't letting us save, so download a copy before you leave."}
+        <h2 style={{ fontSize: 'var(--t-md)' }}>Retest</h2>
+        <p>
+          {sinceLast >= RETEST_MIN_DAYS
+            ? 'It has been a while. Take the test again to see how steady your colors are.'
+            : `Come back in ${RETEST_MIN_DAYS} or more days and take the test again. We'll compare your colors.`}
         </p>
         <div className="row">
           <button
-            onClick={() =>
-              downloadText(`color-fingerprint-${fingerprint.createdAt.slice(0, 10)}.json`, fingerprintToJson(fingerprint))
-            }
-          >
-            Download fingerprint
-          </button>
-          <button onClick={() => fileRef.current?.click()}>Import a fingerprint</button>
-          <button
-            className="link"
             onClick={() => {
-              discardProgress();
-              startCalibration();
+              startRetest();
               go('setup');
             }}
           >
-            Take the test again
+            {sinceLast >= RETEST_MIN_DAYS ? 'Retest now' : 'Retest anyway'}
           </button>
+          <button className="link" onClick={() => fileRef.current?.click()}>Open a fingerprint file</button>
         </div>
         <ImportInput fileRef={fileRef} onLoad={(fp) => (setFingerprint(fp), moveTo(0))} onError={setImportError} />
         {importError && <p role="alert">{importError}</p>}
