@@ -208,3 +208,29 @@ test('phase 2: retest compares with the saved fingerprint', async ({ page }) => 
   await expect(page.getByText(/3 days ago, your repeat colors were very close/)).toBeVisible();
   await expect(page.getByText(/your average color for each sound moved/)).toBeVisible();
 });
+
+test.describe('reduced motion from the device', () => {
+  test.use({ reducedMotion: 'reduce' });
+  test('explains why fireworks are off and lets the user switch them on', async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate((fp) => localStorage.setItem('colorFingerprint.fingerprint', JSON.stringify(fp)), seededFingerprint(0));
+    await page.reload();
+    await page.getByRole('button', { name: 'Start over' }).click();
+    await expect(page.getByLabel(/Reduce motion/)).toBeChecked();
+    await expect(page.getByText(/your device asks for reduced motion/)).toBeVisible();
+    await page.getByLabel(/wearing headphones/).check();
+    await page.getByLabel(/moving light and color/).check();
+    await page.getByRole('button', { name: 'Play test tone' }).click();
+    await page.getByRole('button', { name: 'Play test tone again' }).waitFor();
+    await page.getByRole('button', { name: 'Hear music in your colors' }).click();
+    await expect(page.getByText(/Untick it to see fireworks/)).toBeVisible();
+    await page.getByRole('button', { name: 'Start the visualizer' }).click();
+    await page.mouse.move(300, 300);
+    await expect(page.getByText(/Reduced motion is on, so fireworks are off/)).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'Style' })).toHaveValue('glow');
+    await page.getByRole('combobox', { name: 'Style' }).selectOption('fireworks');
+    await expect(page.getByRole('combobox', { name: 'Style' })).toHaveValue('fireworks');
+    await expect(page.getByRole('button', { name: 'Reduce motion' })).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.getByText(/Reduced motion is on/)).toHaveCount(0);
+  });
+});

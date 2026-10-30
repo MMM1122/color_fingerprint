@@ -175,6 +175,8 @@ table.text-palette th, table.text-palette td { text-align: left; padding: 0.25re
 .immersive .controls input[type='range'] { width: 6rem; }
 .immersive .status { position: absolute; top: 1rem; left: 1rem; font-size: var(--t-sm); color: var(--n8); transition: opacity 500ms ease; }
 .immersive .status.hidden { opacity: 0; }
+.immersive .controls button.switch[aria-pressed='true'] { background: var(--n95); color: var(--n1); }
+.immersive .status .rm-note { display: block; margin-top: 0.25rem; color: var(--n95); }
 .toggle { display: inline-flex; border: 1px solid var(--n8); border-radius: var(--radius-control); overflow: hidden; }
 .toggle button { border: 0; border-radius: 0; padding: 0.55rem 0.9rem; min-height: 40px; }
 .toggle button[aria-pressed='true'] { background: var(--n95); color: var(--n1); }

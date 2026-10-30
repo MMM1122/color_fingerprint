@@ -65,6 +65,11 @@ function Warning({ onContinue }: { onContinue(): void }) {
           <input type="checkbox" checked={prefs.reducedMotion} onChange={(e) => setPrefs({ reducedMotion: e.target.checked })} />
           <span>Reduce motion: slower drifting, no sudden shapes.</span>
         </label>
+        <p className="quiet">
+          {prefs.reducedMotion
+            ? 'With reduced motion on, you get the soft glow style. Untick it to see fireworks.'
+            : 'You will see fireworks: each note bursts into sparks in your color.'}
+        </p>
         <div className="row">
           <button className="primary" autoFocus onClick={onContinue}>Start the visualizer</button>
           <button onClick={() => go('results')}>Back to my colors</button>
@@ -78,7 +83,7 @@ type Source = TrackId | 'file' | 'mic';
 type View = 'associator' | 'projector';
 
 function Visualizer() {
-  const { fingerprint, prefs, go } = useApp();
+  const { fingerprint, prefs, go, setPrefs } = useApp();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState('Preparing…');
@@ -318,6 +323,9 @@ function Visualizer() {
       <div className={`status${controlsVisible || status ? '' : ' hidden'}`} aria-live="polite">
         {status || readout}
         {showFps && fps != null && <span> ({fps} fps)</span>}
+        {prefs.reducedMotion && (
+          <span className="rm-note">Reduced motion is on, so fireworks are off. Change it in the controls below.</span>
+        )}
       </div>
       <div
         className={`controls${controlsVisible ? '' : ' hidden'}`}
@@ -371,13 +379,25 @@ function Visualizer() {
           <span className="visually-hidden">Style</span>
           <select
             value={prefs.reducedMotion ? 'glow' : style}
-            onChange={(e) => setStyle(e.target.value as VisualStyle)}
+            onChange={(e) => {
+              const v = e.target.value as VisualStyle;
+              setStyle(v);
+              // Picking fireworks is an explicit choice to allow bursts.
+              if (v === 'fireworks' && prefs.reducedMotion) setPrefs({ reducedMotion: false });
+            }}
             aria-describedby="style-note"
           >
-            <option value="fireworks" disabled={prefs.reducedMotion}>Fireworks</option>
+            <option value="fireworks">Fireworks{prefs.reducedMotion ? ' (turns off reduced motion)' : ''}</option>
             <option value="glow">Soft glow</option>
           </select>
         </label>
+        <button
+          className="switch"
+          aria-pressed={prefs.reducedMotion}
+          onClick={() => setPrefs({ reducedMotion: !prefs.reducedMotion })}
+        >
+          Reduce motion: {prefs.reducedMotion ? 'on' : 'off'}
+        </button>
         <label>
           <span className="visually-hidden">View</span>
           <select value={view} onChange={(e) => setView(e.target.value as View)} aria-describedby="view-note">

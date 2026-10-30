@@ -3,6 +3,14 @@ import { useApp } from '../store/app';
 import { getVolume, openSoundGate, playTestTone, setVolume, unlockAudio } from '../audio/engine';
 import TopBar from './TopBar';
 
+function osAsksReduced(): boolean {
+  try {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
+}
+
 /** Setup and safety. Nothing makes a sound until both confirmations are ticked. */
 export default function Setup() {
   const { prefs, setPrefs, completeSetup, startCalibration, go, fingerprint, progress } = useApp();
@@ -59,7 +67,10 @@ export default function Setup() {
               checked={prefs.reducedMotion}
               onChange={(e) => setPrefs({ reducedMotion: e.target.checked })}
             />
-            <span>Reduce motion: slower drifting, no sudden shapes.</span>
+            <span>
+              Reduce motion: slower drifting, no sudden shapes. The music visuals use a soft glow instead of fireworks.
+              {prefs.reducedMotion && osAsksReduced() && ' (Ticked because your device asks for reduced motion.)'}
+            </span>
           </label>
         </fieldset>
 
