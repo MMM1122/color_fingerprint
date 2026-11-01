@@ -1,5 +1,8 @@
 # Color Fingerprint
 
+**Live: https://color-fingerprint.vercel.app** (Vercel, redeploys on every push to `main`; accounts and
+data in Supabase project `color-fingerprint`, region us-west-1).
+
 A site that measures your sound-to-color associations, then visualizes music through your personal
 mapping. Built from the Color Fingerprint AI Build Spec (Oct 29, 2026). Sounds, microphone and camera
 never leave the device. Accounts are optional: with one, your answers sync across devices through
