@@ -3,6 +3,18 @@
 **Live: https://color-fingerprint.vercel.app** (Vercel, redeploys on every push to `main`; accounts and
 data in Supabase project `color-fingerprint`, region us-west-1).
 
+## Why I made this
+
+Like most people, I feel color when I listen to music: a low piano note seems dark and heavy, a high
+flute note light and bright. Only a few people have true sound–color synesthesia, but research shows
+almost everyone links sounds and colors in similar ways. Higher notes tend to get lighter colors,
+whether you're a synesthete or not.
+
+I wanted to see those colors. Color Fingerprint plays you a few short sounds, asks which color each one
+brings to mind, and then plays music back to you in your own colors.
+
+## About the project
+
 A site that measures your sound-to-color associations, then visualizes music through your personal
 mapping. Built from the Color Fingerprint AI Build Spec (Oct 29, 2026). Sounds, microphone and camera
 never leave the device. Accounts are optional: with one, your answers sync across devices through
