@@ -4,9 +4,10 @@ import { REPETITIONS, STIMULI } from '../config/stimuli';
 import { generateTrialOrder, type Trial } from '../science/trials';
 import { buildFingerprint } from '../science/scoring';
 import type { Answer, Fingerprint } from '../types';
+import type { Account } from '../storage/cloud';
 import { load, loadFingerprint, remove, save, saveFingerprint } from '../storage/local';
 
-export type Screen = 'landing' | 'setup' | 'calibration' | 'results' | 'immersive' | 'share' | 'learn' | 'about';
+export type Screen = 'landing' | 'setup' | 'calibration' | 'results' | 'immersive' | 'share' | 'account' | 'learn' | 'about';
 
 export type CalibrationProgress = {
   startedAt: string;
@@ -20,6 +21,12 @@ export type CalibrationProgress = {
 };
 
 type Prefs = { reducedMotion: boolean; colorVisionDifference?: boolean };
+
+export type SyncState =
+  | { status: 'off' } // not signed in, or accounts not set up on this site
+  | { status: 'syncing' }
+  | { status: 'synced'; at: number }
+  | { status: 'error'; message: string };
 
 type State = {
   screen: Screen;
@@ -37,6 +44,16 @@ type State = {
   finishCalibration(): void;
   discardProgress(): void;
   setFingerprint(fp: Fingerprint): void;
+  /** Signed-in account, or null. */
+  account: Account | null;
+  sync: SyncState;
+  /** True after a password-reset link: the account screen asks for a new password. */
+  passwordRecovery: boolean;
+  setAccount(a: Account | null): void;
+  setSync(s: SyncState): void;
+  setPasswordRecovery(v: boolean): void;
+  /** Forget this device's copy (after signing out); the account keeps its copy. */
+  clearLocal(): void;
 };
 
 const osReducedMotion = () => {
@@ -115,5 +132,16 @@ export const useApp = create<State>((set, get) => ({
   setFingerprint: (fp) => {
     saveFingerprint(fp);
     set({ fingerprint: fp });
+  },
+  account: null,
+  sync: { status: 'off' },
+  passwordRecovery: false,
+  setAccount: (account) => set({ account, sync: account ? get().sync : { status: 'off' } }),
+  setSync: (sync) => set({ sync }),
+  setPasswordRecovery: (passwordRecovery) => set({ passwordRecovery }),
+  clearLocal: () => {
+    remove('fingerprint');
+    remove('progress');
+    set({ fingerprint: null, progress: null });
   },
 }));

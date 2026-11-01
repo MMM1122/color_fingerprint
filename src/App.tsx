@@ -6,6 +6,10 @@ import Calibration from './screens/Calibration';
 import Results from './screens/Results';
 import { Learn, About } from './screens/Info';
 import Share from './screens/Share';
+import Account from './screens/Account';
+import { startCloudSync } from './store/sync';
+
+startCloudSync();
 
 // Three.js is only loaded when someone opens immersive mode.
 const Immersive = lazy(() => import('./screens/Immersive'));
@@ -17,6 +21,7 @@ const TITLES: Record<Screen, string> = {
   results: 'Your colors · Color Fingerprint',
   immersive: 'Music in your colors · Color Fingerprint',
   share: 'Save and share · Color Fingerprint',
+  account: 'Your account · Color Fingerprint',
   learn: 'What is synesthesia? · Color Fingerprint',
   about: 'About and credits · Color Fingerprint',
 };
@@ -47,6 +52,7 @@ export default function App() {
         </Suspense>
       )}
       {screen === 'share' && <Share />}
+      {screen === 'account' && <Account />}
       {screen === 'learn' && <Learn />}
       {screen === 'about' && <About />}
     </main>

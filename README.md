@@ -1,8 +1,9 @@
 # Color Fingerprint
 
-A browser-only site that measures your sound-to-color associations, then visualizes music through your
-personal mapping. Built from the Color Fingerprint AI Build Spec (Oct 29, 2026). No backend, no accounts,
-no audio, video or answers leave the device.
+A site that measures your sound-to-color associations, then visualizes music through your personal
+mapping. Built from the Color Fingerprint AI Build Spec (Oct 29, 2026). Sounds, microphone and camera
+never leave the device. Accounts are optional: with one, your answers sync across devices through
+Supabase. **To put it live, follow [DEPLOY.md](DEPLOY.md).**
 
 **What's in it**
 
@@ -21,6 +22,9 @@ no audio, video or answers leave the device.
     shape. A pure tone's Lissajous figure uses the just-intonation ratio of the note above C, so a G (a
     fifth, 3:2) draws a simple figure and dissonant intervals draw denser ones.
   - *Soft glow*: the slow, blurred "mind's eye" field.
+- **Accounts (optional):** email + password sign-in and sync across devices (Supabase Auth + Postgres
+  with row-level security). Sign out clears the device's copy; delete account removes everything.
+  Without the two `VITE_SUPABASE_*` settings the site runs with no account features.
 - **Phase 3 (partly):** a short scripted conversational guide on the results page. **Not built:** anonymous
   data collection and "you vs. everyone", which the spec gates on ethics approval (REB/IRB) and consent
   text, and the YAMNet classifier (large dependency, not approved).
@@ -31,7 +35,8 @@ no audio, video or answers leave the device.
 npm install
 npm run dev        # local dev server
 npm test           # unit tests (Vitest): color math, scoring, patterns, mapping, audio, safety
-npm run e2e        # end-to-end (Playwright): full flow incl. reload-and-resume and immersive mode
+npm run e2e        # end-to-end (Playwright): full flow, Phase 2, accounts (against a mock Supabase)
+npm run test:db    # runs the real database setup in in-memory Postgres and checks the privacy rules
 npm run build      # typecheck + static build in dist/ (deploy to any static host)
 ```
 
@@ -60,6 +65,11 @@ src/visuals/shapes.ts       water-drop rings and geometry curves (rose, spirogra
 src/visuals/scene.ts        Three.js instanced glows, spark streaks, rings, curve dots, camera layer, one bloom pass
 src/visuals/shareCard.ts    share card PNG (palette + title)
 src/screens/                Landing, Setup, Calibration, ColorPicker, Results, Guide, Immersive, Share, Info
+src/storage/cloud.ts        Supabase client: sign up/in/out, password reset, upload/download, delete account
+src/storage/merge.ts        merge device + account fingerprints (union of sessions)
+src/store/sync.ts           keeps device and account in step
+src/screens/Account.tsx     sign in, create account, reset password, sign out, delete account
+supabase/migrations/        database setup (table, row-level security, delete function)
 src/storage/local.ts        localStorage wrapper (try/catch, in-memory fallback), schema migration, JSON export/import
 ```
 

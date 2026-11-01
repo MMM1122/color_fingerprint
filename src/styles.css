@@ -192,3 +192,16 @@ table.text-palette th, table.text-palette td { text-align: left; padding: 0.25re
 .guide .turn.guide { background: var(--n2); }
 .guide .turn.you { background: var(--n95); color: var(--n1); margin-left: auto; width: fit-content; }
 .guide .dot { display: inline-block; width: 0.9em; height: 0.9em; border-radius: 50%; margin-right: 0.5em; vertical-align: -0.1em; box-shadow: 0 0 0 1px rgba(255,255,255,0.4); }
+
+/* ---------- Account ---------- */
+.auth-form { max-width: 24rem; }
+.field { display: grid; gap: 0.35rem; }
+.field input {
+  font: inherit; padding: 0.7rem 0.8rem; border-radius: 8px; min-height: 44px;
+  border: 1px solid var(--n8); background: var(--n2); color: var(--n95);
+}
+.form-error { color: #ffb4a8; }
+button.danger { border-color: #ff8a7a; color: #ffb4a8; }
+button.danger:hover:not(:disabled) { background: #4a2420; }
+.account-link { max-width: 16rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sync-badge { color: #ffb4a8; }

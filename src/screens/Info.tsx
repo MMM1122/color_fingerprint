@@ -1,5 +1,6 @@
 import { useApp } from '../store/app';
 import TopBar from './TopBar';
+import { cloudEnabled } from '../storage/cloud';
 
 export function Learn() {
   const go = useApp((s) => s.go);
@@ -47,8 +48,15 @@ export function About() {
         <h1 style={{ fontSize: 'var(--t-xl)' }}>About and credits</h1>
         <p>
           Color Fingerprint measures your sound-to-color associations, then uses them to color music. Everything
-          runs in your browser. No account, and no audio or answers leave your device.
+          runs in your browser. You don't need an account, and sounds never leave your device.
         </p>
+        {cloudEnabled && (
+          <p>
+            If you create an account, your color answers and results are saved to it so you can use them on any
+            device. Only you can see them. You can delete your account and everything saved with it from the
+            account page at any time.
+          </p>
+        )}
         <p>
           The microphone and camera are only used if you pick them in the visualizer, and only while you're there.
           They're processed on your device and never recorded or uploaded.

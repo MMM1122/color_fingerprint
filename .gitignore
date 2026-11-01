@@ -3,3 +3,7 @@ dist/
 test-results/
 playwright-report/
 *.tmp.mjs
+dist-e2e/
+.env
+.env.local
+.env.*.local
