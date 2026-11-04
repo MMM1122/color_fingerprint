@@ -1,8 +1,8 @@
 # Going live: Supabase (accounts + database) and Vercel (website)
 
 About 20 minutes, all in your browser. Both services are free for this size of project.
-You'll end up with a public address like `https://color-fingerprint.vercel.app` where anyone can
-create an account. Every push to `main` on GitHub redeploys the site automatically.
+You'll end up with a public address (this project uses `https://color-fingerprint.fun`) where anyone
+can create an account. Every push to `main` on GitHub redeploys the site automatically.
 
 ## 1. Create the Supabase project
 
@@ -79,3 +79,13 @@ Without `.env.local` the site runs without accounts, as before.
 - People can delete their account and all its data from the Account page.
 - Using account data for a course or study needs research ethics approval and consent first
   (spec section 6). This setup does not collect data for research.
+
+## Custom domain (how color-fingerprint.fun is set up)
+
+1. **Vercel → Settings → Domains → Add Existing**: add `color-fingerprint.fun` (connected to Production),
+   and `www.color-fingerprint.fun` as a **308 redirect** to `color-fingerprint.fun`.
+2. **Cloudflare (where the domain is registered) → DNS → Records**: add the CNAME records Vercel shows,
+   one for `@` and one for `www`, both pointing to the target Vercel gives you, with the proxy **off**
+   ("DNS only").
+3. **Supabase → Authentication → URL Configuration**: Site URL `https://color-fingerprint.fun`, and add
+   `https://color-fingerprint.fun/**` to Redirect URLs. The vercel.app address keeps working too.

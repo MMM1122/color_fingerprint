@@ -1,7 +1,7 @@
 # Color Fingerprint
 
-**Live: https://color-fingerprint.vercel.app** (Vercel, redeploys on every push to `main`; accounts and
-data in Supabase project `color-fingerprint`, region us-west-1).
+**Live: https://color-fingerprint.fun** (Vercel, redeploys on every push to `main`; accounts and data
+in Supabase project `color-fingerprint`, region us-west-1).
 
 ## Why I made this
 
