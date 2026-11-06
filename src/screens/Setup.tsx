@@ -101,6 +101,14 @@ export default function Setup() {
           </div>
         </fieldset>
 
+        <section className="stack panel" aria-labelledby="screen-tips">
+          <h2 id="screen-tips" className="legend-like">Your screen</h2>
+          <p className="quiet">
+            Colors look different on every screen. For colors you can compare later, use the same screen each time,
+            turn off Night Shift, Night Light or any blue-light filter, and set brightness to a normal level.
+          </p>
+        </section>
+
         <fieldset className="stack panel">
           <legend>Do you have a color vision difference? (optional)</legend>
           <p className="quiet">We only use this to add a note to your results.</p>

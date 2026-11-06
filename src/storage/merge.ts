@@ -21,9 +21,22 @@ export function mergeSessions(a: Session[], b: Session[]): Session[] {
   return [...byKey.values()].sort((x, y) => x.startedAt.localeCompare(y.startedAt));
 }
 
+/**
+ * Recompute everything derived (palette, scores, patterns) from the saved answers, so a fingerprint
+ * saved by an older version of the site picks up improvements to the math.
+ */
+export function rebuild(fp: Fingerprint | null): Fingerprint | null {
+  if (!fp) return null;
+  try {
+    return buildFingerprint(fp.sessions, STIMULI, fp.flags ?? {}, fp.createdAt);
+  } catch {
+    return fp;
+  }
+}
+
 export function mergeFingerprints(local: Fingerprint | null, remote: Fingerprint | null): Fingerprint | null {
-  if (!local) return remote;
-  if (!remote) return local;
+  if (!local) return rebuild(remote);
+  if (!remote) return rebuild(local);
   const sessions = mergeSessions(local.sessions, remote.sessions);
   const flags = { ...remote.flags, ...local.flags };
   const createdAt = [local.createdAt, remote.createdAt].sort()[0];

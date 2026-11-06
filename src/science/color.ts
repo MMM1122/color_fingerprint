@@ -109,6 +109,61 @@ export function meanOklch(colors: Oklch[], weights?: number[]): Oklch | null {
   return oklabToOklch([acc[0] / sw, acc[1] / sw, acc[2] / sw]);
 }
 
+/**
+ * Representative color for a set of answers, used for palette anchors and live blending.
+ *
+ * Averaging in OKLab (meanOklch) is right for statistics, but it makes a muddy gray when the
+ * answers disagree (blue + yellow → gray), a color the person never picked. Here:
+ *  - lightness and colorfulness are averaged directly, so the result is as vivid as the answers;
+ *  - hue is the circular mean, weighted by colorfulness (grays barely vote on hue);
+ *  - if the hues disagree too much to average (agreement below `minAgreement`, about 120° apart for
+ *    two equal answers), the result is instead the medoid: the actual answer closest to the others
+ *    (ΔE in CIELUV), or the one with the largest weight. Ties go to the later answer.
+ */
+export function representativeColor(colors: Oklch[], weights?: number[], minAgreement = 0.5): Oklch | null {
+  const w = weights ?? colors.map(() => 1);
+  const idx = colors.map((_, i) => i).filter((i) => w[i] > 0);
+  if (idx.length === 0) return null;
+  if (idx.length === 1) return colors[idx[0]];
+  let sw = 0, sl = 0, sc = 0, hx = 0, hy = 0, swc = 0;
+  for (const i of idx) {
+    const [l, c, h] = colors[i];
+    const r = (h * Math.PI) / 180;
+    sw += w[i];
+    sl += w[i] * l;
+    sc += w[i] * c;
+    hx += w[i] * c * Math.cos(r);
+    hy += w[i] * c * Math.sin(r);
+    swc += w[i] * c;
+  }
+  const L = sl / sw;
+  const C = sc / sw;
+  if (swc < 1e-6) return [L, C, 0];
+  const agreement = Math.hypot(hx, hy) / swc;
+  if (agreement >= minAgreement) {
+    let h = (Math.atan2(hy, hx) * 180) / Math.PI;
+    if (h < 0) h += 360;
+    return [L, C, h];
+  }
+  if (weights) {
+    // Live blending: the dominant color wins.
+    let best = idx[0];
+    for (const i of idx) if (w[i] >= w[best]) best = i;
+    return colors[best];
+  }
+  const luvs = idx.map((i) => oklchToLuv(colors[i]));
+  let best = 0;
+  let bestD = Infinity;
+  luvs.forEach((a, j) => {
+    const d = luvs.reduce((s, b) => s + deltaELuv(a, b), 0);
+    if (d <= bestD + 1e-9) {
+      best = j;
+      bestD = d;
+    }
+  });
+  return colors[idx[best]];
+}
+
 /** Shortest signed hue difference b - a, in (-180, 180]. */
 export function hueDelta(a: number, b: number): number {
   let d = (((b - a) % 360) + 360) % 360;
@@ -144,4 +199,48 @@ export function describeColor([l, c, h]: Oklch): string {
   const tone = l > 0.8 ? 'light ' : l < 0.45 ? 'dark ' : '';
   const sat = c < 0.07 ? 'muted ' : '';
   return `${tone}${sat}${name}`;
+}
+
+/* ------------------------------------------------------------------ */
+/* Fast OKLCH → sRGB for drawing the picker (thousands of pixels)      */
+/* ------------------------------------------------------------------ */
+
+/** OKLCH → linear sRGB (Björn Ottosson's OKLab matrices). Values outside 0–1 are out of gamut. */
+export function oklchToLinearSrgb(l: number, c: number, h: number): [number, number, number] {
+  const r = (h * Math.PI) / 180;
+  const a = c * Math.cos(r);
+  const b = c * Math.sin(r);
+  const l_ = (l + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m_ = (l - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s_ = (l - 0.0894841775 * a - 1.291485548 * b) ** 3;
+  return [
+    4.0767416621 * l_ - 3.3077115913 * m_ + 0.2309699292 * s_,
+    -1.2684380046 * l_ + 2.6097574011 * m_ - 0.3413193965 * s_,
+    -0.0041960863 * l_ - 0.7034186147 * m_ + 1.707614701 * s_,
+  ];
+}
+
+const EPS = 1e-4;
+export function inSrgbGamut(l: number, c: number, h: number): boolean {
+  const [r, g, b] = oklchToLinearSrgb(l, c, h);
+  return r >= -EPS && r <= 1 + EPS && g >= -EPS && g <= 1 + EPS && b >= -EPS && b <= 1 + EPS;
+}
+
+/** The most colorful chroma an sRGB screen can show at this lightness and hue. */
+export function maxChroma(l: number, h: number): number {
+  if (l <= 0 || l >= 1) return 0;
+  let lo = 0;
+  let hi = 0.4;
+  for (let i = 0; i < 18; i++) {
+    const mid = (lo + hi) / 2;
+    if (inSrgbGamut(l, mid, h)) lo = mid;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/** sRGB gamma encoding, 0–1 linear → 0–255. */
+export function encodeSrgb8(x: number): number {
+  const v = x <= 0.0031308 ? 12.92 * x : 1.055 * Math.max(0, x) ** (1 / 2.4) - 0.055;
+  return Math.round(Math.min(1, Math.max(0, v)) * 255);
 }

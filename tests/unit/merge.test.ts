@@ -43,8 +43,8 @@ describe('merging device and account fingerprints', () => {
 
   it('handles one side missing', () => {
     const fp = buildFingerprint([session('2026-10-01T10:00:00Z', 200)], STIMULI, {});
-    expect(mergeFingerprints(null, fp)).toBe(fp);
-    expect(mergeFingerprints(fp, null)).toBe(fp);
+    expect(mergeFingerprints(null, fp)).toStrictEqual(fp);
+    expect(mergeFingerprints(fp, null)).toStrictEqual(fp);
     expect(mergeFingerprints(null, null)).toBeNull();
     expect(sameSessions(fp, mergeFingerprints(fp, fp))).toBe(true);
   });

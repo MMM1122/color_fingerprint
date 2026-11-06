@@ -5,6 +5,7 @@ import { generateTrialOrder, type Trial } from '../science/trials';
 import { buildFingerprint } from '../science/scoring';
 import type { Answer, Fingerprint } from '../types';
 import type { Account } from '../storage/cloud';
+import { rebuild } from '../storage/merge';
 import { load, loadFingerprint, remove, save, saveFingerprint } from '../storage/local';
 
 export type Screen = 'landing' | 'setup' | 'calibration' | 'results' | 'immersive' | 'share' | 'account' | 'learn' | 'about';
@@ -69,7 +70,7 @@ export const useApp = create<State>((set, get) => ({
   setupDone: false,
   prefs: load<Prefs>('prefs') ?? { reducedMotion: osReducedMotion() },
   progress: load<CalibrationProgress>('progress'),
-  fingerprint: loadFingerprint(),
+  fingerprint: rebuild(loadFingerprint()),
 
   go: (screen) => {
     set({ screen });

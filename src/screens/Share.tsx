@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { RETEST_MIN_DAYS } from '../config/stimuli';
 import { useApp } from '../store/app';
+import { rebuild } from '../storage/merge';
 import { downloadBlob, downloadText, fingerprintFromJson, fingerprintToJson, isPersistent } from '../storage/local';
 import { canvasToBlob, drawShareCard, SHARE_TITLE } from '../visuals/shareCard';
 import { daysSince, reminderIcs, sessionEnd } from '../science/retest';
@@ -130,7 +131,7 @@ export default function Share() {
               e.target.value = '';
               if (!f) return;
               try {
-                setFingerprint(fingerprintFromJson(await f.text()));
+                setFingerprint(rebuild(fingerprintFromJson(await f.text()))!);
                 setNote('Fingerprint opened.');
               } catch (err) {
                 setNote(`That file couldn't be opened: ${(err as Error).message}`);

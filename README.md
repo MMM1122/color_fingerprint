@@ -102,6 +102,20 @@ src/storage/local.ts        localStorage wrapper (try/catch, in-memory fallback)
 
 These are places where the build departs from, or fills a gap in, the spec. Each is isolated so it is easy to change.
 
+0. **Palette colors (anchors).** The spec asks for the mean of the three answers in OKLCH. Averaging in
+   OKLab turned clashing answers (blue + yellow) into a muddy gray nobody picked, and washed out similar
+   ones. Now (`representativeColor` in `src/science/color.ts`): lightness and colorfulness are averaged
+   directly, hue is the circular mean weighted by colorfulness, and if the hues disagree too much
+   (agreement < 0.5, about 120° apart) the anchor is the answer closest to the others (the medoid). Saved
+   fingerprints are rebuilt from their answers on load, so they pick this up. Consistency scores and the
+   pattern rules are unchanged (still mean pairwise ΔE in CIELUV and OKLab means), so they stay comparable
+   with the research. Live blending between timbres and the 150 ms smoother work in OKLCH too, so color
+   changes pass through real hues instead of gray.
+   The picker now shows a shade plane (lightness × colorfulness for the current hue) with the part an sRGB
+   screen can't show hatched, a gamut-aware hue ring and colorfulness track, and a hex field. Colors stay
+   in sRGB on purpose: the visualizer's WebGL canvas is sRGB, so a wide-gamut (P3) pick couldn't be shown
+   back to the user. The setup screen asks people to turn off Night Shift / blue-light filters.
+
 1. **Consistency score scale (verified).** Rothen et al. (2013)'s CIELUV cutoff of 135 and Eagleman et al.
    (2007)'s RGB cutoff of 1.0 both *sum* the three pairwise distances per item, then average over items.
    The spec's score is the *mean* pairwise distance, a third of that. The app keeps the spec's mean as the

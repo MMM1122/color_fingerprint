@@ -5,6 +5,7 @@ import { useApp } from '../store/app';
 import { BAND_TEXT, consistencyBand, detectPatterns, groupByStimulus, scoreConsistency } from '../science/scoring';
 import { describeColor, oklchToHex } from '../science/color';
 import { fingerprintFromJson } from '../storage/local';
+import { rebuild } from '../storage/merge';
 import TopBar from './TopBar';
 import Guide from './Guide';
 
@@ -298,7 +299,7 @@ function ImportInput({
         e.target.value = '';
         if (!f) return;
         try {
-          onLoad(fingerprintFromJson(await f.text()));
+          onLoad(rebuild(fingerprintFromJson(await f.text()))!);
           onError(null);
         } catch (err) {
           onError(`That file couldn't be opened: ${(err as Error).message}`);

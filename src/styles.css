@@ -92,7 +92,7 @@ input[type='number'] {
   border: 1px solid var(--n8); background: var(--n1); color: var(--n95);
 }
 fieldset { border: 0; padding: 0; margin: 0; }
-legend { padding: 0; margin-bottom: 0.5rem; font-weight: 600; }
+legend, .legend-like { padding: 0; margin: 0 0 0.5rem; font-weight: 600; font-size: inherit; }
 
 .panel { border-top: 1px solid var(--n3); padding-top: var(--space); }
 
@@ -125,7 +125,16 @@ legend { padding: 0; margin-bottom: 0.5rem; font-weight: 600; }
 
 /* ---------- Color picker ---------- */
 .picker { display: grid; gap: 1rem; }
-.picker .wheel { position: relative; width: min(100%, 300px); aspect-ratio: 1; touch-action: none; }
+.picker-top { display: flex; flex-wrap: wrap; gap: 1.25rem; align-items: center; }
+.picker .wheel { position: relative; width: min(100%, 260px); aspect-ratio: 1; touch-action: none; }
+.plane-wrap { flex: 1 1 200px; max-width: 320px; }
+.plane { position: relative; width: 100%; aspect-ratio: 3 / 2; border-radius: 8px; touch-action: none; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.25); }
+.plane canvas { width: 100%; height: 100%; display: block; cursor: crosshair; border-radius: 8px; }
+.plane .knob { width: 18px; height: 18px; margin: -9px 0 0 -9px; }
+.plane-legend { display: flex; justify-content: space-between; margin: 0.35rem 0 0; font-size: 0.85rem; }
+.picker-foot { display: flex; flex-wrap: wrap; gap: 0.75rem 1.25rem; align-items: center; justify-content: space-between; }
+.hex-field { display: inline-flex; gap: 0.5rem; align-items: center; }
+.hex-field input { font: inherit; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; width: 6.5rem; padding: 0.4rem 0.5rem; border-radius: 6px; border: 1px solid var(--n8); background: var(--n1); color: var(--n95); }
 .picker .wheel canvas { width: 100%; height: 100%; display: block; cursor: crosshair; border-radius: 50%; }
 .picker .swatch { position: absolute; inset: 22%; border-radius: 50%; box-shadow: inset 0 0 0 2px rgba(255,255,255,0.35); }
 .picker .knob { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 0 1px #000; pointer-events: none; }

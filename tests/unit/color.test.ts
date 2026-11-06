@@ -61,3 +61,69 @@ describe('color conversions', () => {
     expect(Math.min(m[2], 360 - m[2])).toBeLessThan(0.01);
   });
 });
+
+describe('palette colors (representative color)', () => {
+  it('blue and yellow answers do not average to gray: the middle answer is used', async () => {
+    const { representativeColor, meanOklch } = await import('../../src/science/color');
+    const blue: [number, number, number] = [0.55, 0.18, 260];
+    const yellow: [number, number, number] = [0.9, 0.17, 100];
+    const blue2: [number, number, number] = [0.58, 0.16, 255];
+    expect(meanOklch([blue, yellow, blue2])![1]).toBeLessThan(0.07); // the old, muddy result
+    const r = representativeColor([blue, yellow, blue2])!;
+    expect(r[1]).toBeGreaterThan(0.15);
+    expect(Math.abs(r[2] - 257)).toBeLessThan(5); // one of the blues
+  });
+
+  it('similar answers keep their colorfulness instead of washing out', async () => {
+    const { representativeColor, meanOklch } = await import('../../src/science/color');
+    const cols: [number, number, number][] = [
+      [0.6, 0.2, 20],
+      [0.62, 0.2, 60],
+      [0.58, 0.2, 40],
+    ];
+    const r = representativeColor(cols)!;
+    expect(r[1]).toBeCloseTo(0.2, 5);
+    expect(r[2]).toBeCloseTo(40, 1);
+    expect(meanOklch(cols)![1]).toBeLessThan(0.2);
+  });
+
+  it('a gray answer barely moves the hue', async () => {
+    const { representativeColor } = await import('../../src/science/color');
+    const r = representativeColor([
+      [0.6, 0.2, 140],
+      [0.6, 0.01, 300],
+    ])!;
+    expect(Math.abs(r[2] - 140)).toBeLessThan(5);
+  });
+
+  it('live blending picks the dominant timbre when hues clash', async () => {
+    const { representativeColor } = await import('../../src/science/color');
+    const r = representativeColor(
+      [
+        [0.6, 0.2, 30],
+        [0.6, 0.2, 200],
+      ],
+      [0.4, 0.6],
+    )!;
+    expect(r[2]).toBe(200);
+  });
+});
+
+describe('picker gamut helpers', () => {
+  it('fast conversion and max chroma agree with culori', async () => {
+    const { maxChroma, inSrgbGamut, encodeSrgb8, oklchToLinearSrgb, oklchToHex } = await import('../../src/science/color');
+    const { displayable } = await import('culori');
+    for (const [l, h] of [[0.5, 30], [0.7, 140], [0.45, 265], [0.9, 105], [0.3, 320]]) {
+      const m = maxChroma(l, h);
+      expect(displayable({ mode: 'oklch', l, c: m * 0.99, h })).toBe(true);
+      expect(displayable({ mode: 'oklch', l, c: m * 1.02 + 0.002, h })).toBe(false);
+      expect(inSrgbGamut(l, m * 1.05 + 0.002, h)).toBe(false);
+    }
+    // Pixel colors match culori's hex for an in-gamut color.
+    const rgb = oklchToLinearSrgb(0.6, 0.1, 200).map(encodeSrgb8);
+    const hex = '#' + rgb.map((v) => v.toString(16).padStart(2, '0')).join('');
+    const ref = oklchToHex([0.6, 0.1, 200]);
+    const diff = [1, 3, 5].map((i) => Math.abs(parseInt(hex.slice(i, i + 2), 16) - parseInt(ref.slice(i, i + 2), 16)));
+    expect(Math.max(...diff)).toBeLessThanOrEqual(1);
+  });
+});

@@ -3,14 +3,17 @@
  */
 import { MAP_MIDI_MAX, MAP_MIDI_MIN, MISSING_TIMBRE_CHROMA_SCALE, PITCHES_MIDI, TIMBRES } from '../config/stimuli';
 import type { Answer, Fingerprint, Oklch, Stimulus, Timbre } from '../types';
-import { lerpHue, meanOklch, oklabToOklch, oklchToOklab } from '../science/color';
+import { lerpHue, representativeColor } from '../science/color';
 import { defaultColor } from './defaultMap';
 
 export type Anchors = Fingerprint['anchors'];
 
 const r4 = (x: number) => Math.round(x * 1e4) / 1e4;
 
-/** Mean of the user's answers per timbre and pitch, in OKLCH (averaged in OKLab). */
+/**
+ * One color per timbre and pitch from the user's answers: averaged in OKLCH so it stays as vivid as
+ * the answers, or the middle answer when they disagree too much to average (see representativeColor).
+ */
 export function buildAnchors(answers: Answer[], stimuli: Stimulus[]): Anchors {
   const out: Anchors = {};
   for (const t of TIMBRES) {
@@ -18,7 +21,7 @@ export function buildAnchors(answers: Answer[], stimuli: Stimulus[]): Anchors {
     for (const midi of PITCHES_MIDI) {
       const ids = new Set(stimuli.filter((s) => s.timbre === t && s.midi === midi).map((s) => s.id));
       const cols = answers.filter((a) => ids.has(a.stimulusId) && a.color).map((a) => a.color!.oklch);
-      const m = meanOklch(cols);
+      const m = representativeColor(cols);
       out[t][midi] = m ? [r4(m[0]), r4(m[1]), Math.round(m[2] * 100) / 100] : null;
     }
   }
@@ -99,33 +102,26 @@ export function makeDefaultMap(): ColorMap {
 export function blendColors(items: [Oklch, number][]): Oklch {
   const valid = items.filter(([, w]) => w > 0);
   if (valid.length === 0) return items[0][0];
-  return meanOklch(
+  return representativeColor(
     valid.map(([c]) => c),
     valid.map(([, w]) => w),
   )!;
 }
 
 /**
- * Exponential smoother in OKLab so the output color never flickers.
- * tauMs is the time constant (≈150 ms per spec).
+ * Exponential smoother so the output color never flickers. tauMs is the time constant (≈150 ms per
+ * spec). Works in OKLCH (hue the short way round) so a change from blue to yellow passes through
+ * green rather than a dull gray.
  */
 export class ColorSmoother {
-  private lab: [number, number, number] | null = null;
+  private c: Oklch | null = null;
   constructor(private tauMs: number) {}
   update(target: Oklch, dtMs: number): Oklch {
-    const t = oklchToOklab(target);
-    if (!this.lab) this.lab = t;
-    else {
-      const k = 1 - Math.exp(-dtMs / this.tauMs);
-      this.lab = [
-        this.lab[0] + (t[0] - this.lab[0]) * k,
-        this.lab[1] + (t[1] - this.lab[1]) * k,
-        this.lab[2] + (t[2] - this.lab[2]) * k,
-      ];
-    }
-    return oklabToOklch(this.lab);
+    if (!this.c) this.c = target;
+    else this.c = lerpOklch(this.c, target, 1 - Math.exp(-dtMs / this.tauMs));
+    return this.c;
   }
   reset() {
-    this.lab = null;
+    this.c = null;
   }
 }

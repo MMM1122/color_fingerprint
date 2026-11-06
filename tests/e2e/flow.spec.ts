@@ -287,3 +287,29 @@ test('stereo: a demo track places sounds left and right, and the switch turns it
   await page.waitForTimeout(1500);
   await expect(status).not.toContainText(/on the (left|right)/);
 });
+
+test('picker: shade plane snaps to what the screen can show; hex field sets an exact color', async ({ page }) => {
+  await page.goto('/');
+  await setup(page);
+  // Wait for the trial to start (it resets the picker once when ready).
+  await expect(page.locator('[data-stimulus]')).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole('button', { name: /Playing|Play again/ })).toBeVisible();
+  const plane = page.getByTestId('shade-plane');
+  const box = (await plane.boundingBox())!;
+  // Far right, middle height: past the screen's limit for most hues → snapped to the edge.
+  await page.mouse.click(box.x + box.width - 2, box.y + box.height / 2);
+  await expect(page.getByLabel('Lightness value')).toHaveValue(/^(49|50|51)$/);
+  const cAfter = Number(await page.getByLabel('Colorfulness value').inputValue());
+  expect(cAfter).toBeLessThan(37);
+  expect(cAfter).toBeGreaterThan(5);
+  await expect(page.getByText(/the most colorful this screen can show/)).toHaveCount(0);
+
+  const hex = page.getByLabel('Hex');
+  await hex.click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.insertText('#3a7bd5'); // like a paste
+  await expect(page.getByLabel('Hue value')).toHaveValue(/^(25[0-9]|26[0-9])$/);
+  await hex.blur();
+  await expect(hex).toHaveValue('#3a7bd5');
+  await page.screenshot({ path: '/tmp/picker.png', fullPage: true });
+});
