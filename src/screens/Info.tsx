@@ -66,6 +66,9 @@ export function About() {
           The piano, pure-tone, bowed-string and sung "ah" sounds, and the three built-in tracks, are generated in
           your browser by this site's own code. They are stand-ins until openly licensed recordings are chosen.
         </p>
+        <p>
+          Music: <span lang="zh">“氤氲之森”</span> (Yinyun Zhi Sen) by CMJ, used with permission.
+        </p>
         <h2 style={{ fontSize: 'var(--t-lg)' }}>Research</h2>
         <ul style={{ maxWidth: 'var(--measure)' }}>
           <li>Eagleman, Kagan, Nelson, Sagaram and Sarma (2007). A standardized test battery for the study of synesthesia. Journal of Neuroscience Methods.</li>

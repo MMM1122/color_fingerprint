@@ -8,12 +8,38 @@ import type { Timbre } from '../types';
 import { normalizeLoudness } from './loudness';
 import { renderTone } from './synth';
 
-export type TrackId = 'rain' | 'bloom' | 'voices';
-export const TRACKS: { id: TrackId; title: string; description: string }[] = [
+/** Tracks generated in code (rendered in a Web Worker). */
+export type GeneratedTrackId = 'rain' | 'bloom' | 'voices';
+/** Recorded tracks shipped as files in public/tracks/. Each must be credited in ATTRIBUTION.md. */
+export type FileTrackId = 'yinyun';
+export type TrackId = GeneratedTrackId | FileTrackId;
+
+export type TrackInfo = {
+  id: TrackId;
+  title: string;
+  description: string;
+  /** Path under public/, for recorded tracks. */
+  file?: string;
+  /** Language of the title, when it isn't English (for screen readers). */
+  lang?: string;
+  credit?: string;
+};
+
+export const TRACKS: TrackInfo[] = [
   { id: 'rain', title: 'Rain on the keys', description: 'Piano arpeggios across three octaves' },
   { id: 'bloom', title: 'Slow bloom', description: 'Bowed-string chords with a pure-tone melody' },
   { id: 'voices', title: 'Four voices', description: 'Piano, strings, pure tone and a sung "ah" taking turns' },
+  {
+    id: 'yinyun',
+    title: '氤氲之森 – CMJ',
+    description: 'Recorded track by CMJ, used with permission',
+    file: 'tracks/yinyun-zhisen-cmj.mp3',
+    lang: 'zh',
+    credit: '“氤氲之森” by CMJ, used with permission.',
+  },
 ];
+
+export const isFileTrack = (id: TrackId): id is FileTrackId => Boolean(TRACKS.find((t) => t.id === id)?.file);
 
 type Note = { t: number; midi: number; dur: number; timbre: Timbre; vel: number };
 
@@ -73,7 +99,7 @@ function voicesNotes(): Note[] {
   return notes;
 }
 
-export function renderTrack(id: TrackId, sampleRate: number): Float32Array {
+export function renderTrack(id: GeneratedTrackId, sampleRate: number): Float32Array {
   const notes = id === 'rain' ? rainNotes() : id === 'bloom' ? bloomNotes() : voicesNotes();
   const end = Math.max(...notes.map((n) => n.t + n.dur)) + 1;
   const out = new Float32Array(Math.ceil(end * sampleRate));

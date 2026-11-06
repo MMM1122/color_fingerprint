@@ -6,13 +6,14 @@
 | --- | --- | --- | --- |
 | Calibration sounds (piano, pure tone, bowed strings, sung "ah" × C3, A3, F4, D5, B5) | Synthesized in the browser by `src/audio/synth.ts` | Original code in this repo | Same as this project |
 | Built-in tracks "Rain on the keys", "Slow bloom", "Four voices" | Generated in the browser by `src/audio/tracks.ts` | Original code in this repo | Same as this project |
+| `public/tracks/yinyun-zhisen-cmj.mp3`: "氤氲之森" (Yinyun Zhi Sen) by CMJ | Recorded music track (2:43), re-encoded to 192 kbps MP3 | Supplied by the site owner | Used with permission (owner confirmed, Nov 6, 2026). Not openly licensed: do not reuse outside this site. |
 
 The synthesized piano and strings are **placeholders**. Spec section 3 asks for openly licensed instrument
 samples, and choosing them is an open decision (spec section 11). To use real samples, put the files in
 `public/samples/`, list them in `SAMPLE_FILES` in `src/config/stimuli.ts`, and add one row per file here
 with its source URL, author and license.
 
-No sample or track from a third party is included yet.
+One third-party recording is included: CMJ's "氤氲之森", used with permission (see the table).
 
 ## Software
 

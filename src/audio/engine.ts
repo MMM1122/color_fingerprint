@@ -9,7 +9,8 @@ import type { Stimulus } from '../types';
 import { applyFades } from './synth';
 import { normalizeLoudness } from './loudness';
 import { renderStimulus } from './pipeline';
-import type { TrackId } from './tracks';
+import { TRACKS, isFileTrack, type TrackId } from './tracks';
+import { measureLoudness } from './loudness';
 
 export const DEFAULT_VOLUME = 0.25;
 
@@ -202,9 +203,39 @@ export async function playStimulus(s: Stimulus): Promise<void> {
 
 let current: Tone.Player | null = null;
 
+/**
+ * A recorded track from public/tracks/: fetched, decoded, and brought to the same loudness as
+ * everything else (one gain for all channels, so the stereo image is kept; peaks stay below 0.89).
+ */
+async function loadFileTrack(id: TrackId): Promise<Tone.ToneAudioBuffer> {
+  const info = TRACKS.find((t) => t.id === id)!;
+  const res = await fetch(new URL(info.file!, document.baseURI));
+  if (!res.ok) throw new Error(`Couldn't load the track (${res.status}).`);
+  const decoded = await audioContext().decodeAudioData(await res.arrayBuffer());
+  const channels = Array.from({ length: decoded.numberOfChannels }, (_, c) => decoded.getChannelData(c));
+  const mono = new Float32Array(decoded.length);
+  let peak = 0;
+  for (const ch of channels) {
+    for (let i = 0; i < ch.length; i++) {
+      mono[i] += ch[i] / channels.length;
+      peak = Math.max(peak, Math.abs(ch[i]));
+    }
+  }
+  let gain = 10 ** ((TARGET_LOUDNESS_LUFS - measureLoudness(mono, decoded.sampleRate)) / 20);
+  if (peak * gain > 0.89) gain = 0.89 / peak;
+  for (const ch of channels) for (let i = 0; i < ch.length; i++) ch[i] *= gain;
+  return new Tone.ToneAudioBuffer(decoded);
+}
+
 export function trackBuffer(id: TrackId): Promise<Tone.ToneAudioBuffer> {
   const cached = trackCache.get(id);
   if (cached) return Promise.resolve(cached);
+  if (isFileTrack(id)) {
+    return loadFileTrack(id).then((buf) => {
+      trackCache.set(id, buf);
+      return buf;
+    });
+  }
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('./trackWorker.ts', import.meta.url), { type: 'module' });
     worker.onmessage = (e: MessageEvent<{ buffer: Float32Array }>) => {

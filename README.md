@@ -28,6 +28,8 @@ Supabase. **To put it live, follow [DEPLOY.md](DEPLOY.md).**
 - **Phase 2:** microphone input, camera view, the voice "ah" timbre, retest flow with a comparison to last
   time, a share card PNG (palette and title only), a calendar reminder for the retest, and iOS audio
   unlock on first tap.
+- **Music:** three tracks generated in code, plus "氤氲之森" by CMJ (used with permission, see
+  ATTRIBUTION.md). Visitors can also open their own audio file or use the microphone.
 - **Visual styles** (pick in the visualizer's Style menu). Reduced motion always uses soft glow.
   - *Fireworks* (default): each note bursts into sharp sparks at its height, in your color for that note.
   - *Water drops*: each note lands like a drop and sends out rings. Higher notes make smaller, quicker rings.

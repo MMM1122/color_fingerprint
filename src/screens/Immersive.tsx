@@ -354,7 +354,9 @@ function Visualizer() {
             }}
           >
             {TRACKS.map((t) => (
-              <option key={t.id} value={t.id}>{t.title}</option>
+              <option key={t.id} value={t.id} lang={t.lang}>
+                {t.title}
+              </option>
             ))}
             {fileName && <option value="file">{fileName}</option>}
             <option value="upload">Open a file from your device…</option>

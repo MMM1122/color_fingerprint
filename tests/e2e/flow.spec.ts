@@ -234,3 +234,31 @@ test.describe('reduced motion from the device', () => {
     await expect(page.getByText(/Reduced motion is on/)).toHaveCount(0);
   });
 });
+
+test('recorded track: 氤氲之森 by CMJ loads from the site and drives the visuals', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate((fp) => localStorage.setItem('colorFingerprint.fingerprint', JSON.stringify(fp)), seededFingerprint(0));
+  await page.reload();
+  await page.getByRole('button', { name: 'Start over' }).click();
+  await page.getByLabel(/wearing headphones/).check();
+  await page.getByLabel(/moving light and color/).check();
+  await page.getByRole('button', { name: 'Play test tone' }).click();
+  await page.getByRole('button', { name: 'Play test tone again' }).waitFor();
+  await page.getByRole('button', { name: 'Hear music in your colors' }).click();
+  await page.getByRole('button', { name: 'Start the visualizer' }).click();
+  await page.mouse.move(300, 300);
+  const music = page.getByRole('combobox', { name: 'Music' });
+  await expect(music.locator('option', { hasText: '氤氲之森' })).toHaveCount(1);
+  const [res] = await Promise.all([
+    page.waitForResponse((r) => r.url().includes('tracks/yinyun-zhisen-cmj.mp3')),
+    music.selectOption('yinyun'),
+  ]);
+  expect(res.status()).toBe(200);
+  await expect(page.locator('.immersive .status')).toContainText(/Closest to/, { timeout: 30000 });
+  await page.mouse.move(310, 300);
+  await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible();
+  await page.getByRole('button', { name: 'Exit' }).click();
+  await page.getByRole('button', { name: 'Color Fingerprint' }).click();
+  await page.getByRole('button', { name: 'About and credits' }).click();
+  await expect(page.getByText(/by CMJ, used with permission/)).toBeVisible();
+});
