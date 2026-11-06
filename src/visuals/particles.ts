@@ -53,7 +53,20 @@ export type FieldInput = {
   silent: boolean;
   /** Closest timbre right now (picks the geometry curve). */
   timbre?: Timbre;
+  /** Stereo position of the sound, when the source is stereo. null = mono, use the whole width. */
+  space?: { pan: number; width: number } | null;
 };
+
+/**
+ * Horizontal spawn position. Mono: anywhere across the screen (as before). Stereo: around the
+ * sound's pan position, spread wider when the sound is wide. u1, u2 are uniform random numbers.
+ */
+export function spatialX(space: { pan: number; width: number } | null | undefined, range: number, u1: number, u2: number): number {
+  if (!space) return (u1 * 2 - 1) * range;
+  const spread = 0.15 + 0.85 * Math.min(1, space.width * 1.5);
+  const x = space.pan * range * 0.9 + (u1 + u2 - 1) * spread * range;
+  return Math.min(range, Math.max(-range, x));
+}
 
 export type FieldOptions = { reducedMotion: boolean; intensity: number; aspect: number; style?: VisualStyle };
 
@@ -160,6 +173,12 @@ export class ParticleField {
     return Math.min(1, Math.max(0, (midi - MAP_MIDI_MIN) / (MAP_MIDI_MAX - MAP_MIDI_MIN)));
   }
 
+  private space: FieldInput['space'] = null;
+
+  private x(range: number): number {
+    return spatialX(this.space, range, this.rng(), this.rng());
+  }
+
   private spawnGlow(color: Oklch, midi: number, loud: number, grain: number, faint: boolean) {
     const p = this.particles.find((q) => !q.active);
     if (!p) return;
@@ -167,7 +186,7 @@ export class ParticleField {
     const t = this.heightFor(midi);
     const a = this.opts.aspect;
     p.active = true;
-    p.x = (this.rng() * 2 - 1) * a * 0.85;
+    p.x = this.x(a * 0.85);
     p.y = -0.8 + t * 1.6 + (this.rng() - 0.5) * 0.15;
     const speed = (r ? 0.012 : 0.035) * (0.6 + this.rng() * 0.8);
     p.vy = (t - 0.45) * 2 * speed; // high notes drift up, low notes drift down
@@ -190,7 +209,7 @@ export class ParticleField {
     const sp = this.sparks;
     const t = this.heightFor(midi);
     const a = this.opts.aspect;
-    const cx = (this.rng() * 2 - 1) * a * 0.75;
+    const cx = this.x(a * 0.75);
     const cy = -0.7 + t * 1.4;
     const count = Math.round((F.minSparks + (F.maxSparks - F.minSparks) * loud) * (0.5 + 0.5 * this.opts.intensity));
     const speedScale = 0.7 + 0.6 * loud;
@@ -226,7 +245,7 @@ export class ParticleField {
     const rp = this.ripples;
     const t = this.heightFor(midi);
     const a = this.opts.aspect;
-    const cx = (this.rng() * 2 - 1) * a * 0.8;
+    const cx = this.x(a * 0.8);
     const cy = -0.75 + t * 1.5;
     const rings = Math.round(R.ringsPerDrop[0] + (R.ringsPerDrop[1] - R.ringsPerDrop[0]) * loud);
     const rgb = oklchToRgb01(color);
@@ -263,7 +282,7 @@ export class ParticleField {
     p.kind = CURVE_FOR[timbre];
     p.unit = curvePoints(p.kind, midi, P.pointsPerPattern);
     p.size = (P.size[0] + (P.size[1] - P.size[0]) * loud) * (0.75 + 0.25 * this.opts.intensity);
-    p.cx = (this.rng() * 2 - 1) * (a - p.size) * 0.9;
+    p.cx = this.x((a - p.size) * 0.9);
     p.cy = Math.max(-1 + p.size, Math.min(1 - p.size, -0.7 + t * 1.4));
     p.angle = this.rng() * Math.PI * 2;
     p.spin = (P.spin[0] + (P.spin[1] - P.spin[0]) * this.rng()) * (this.rng() < 0.5 ? -1 : 1);
@@ -279,6 +298,7 @@ export class ParticleField {
   update(input: FieldInput, dt: number, now: number): void {
     const r = this.opts.reducedMotion;
     const style = this.style;
+    this.space = input.space ?? null;
     const loudTarget = input.silent ? 0 : Math.min(1, input.rms / 0.25);
     this.loud += (loudTarget - this.loud) * (1 - Math.exp(-dt / 0.25));
 

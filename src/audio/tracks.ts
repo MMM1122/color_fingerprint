@@ -5,7 +5,7 @@
  */
 import { TARGET_LOUDNESS_LUFS } from '../config/stimuli';
 import type { Timbre } from '../types';
-import { normalizeLoudness } from './loudness';
+import { measureLoudness, normalizeLoudness } from './loudness';
 import { renderTone } from './synth';
 
 /** Tracks generated in code (rendered in a Web Worker). */
@@ -97,6 +97,50 @@ function voicesNotes(): Note[] {
     }
   }
   return notes;
+}
+
+/**
+ * Where each instrument sits in the stereo field, −1 left … +1 right. Piano is spread by pitch like a
+ * keyboard (low notes left, high right); strings sit right, the pure tone left, the voice centre.
+ */
+export function panFor(timbre: Timbre, midi: number): number {
+  if (timbre === 'piano') return Math.max(-0.7, Math.min(0.7, (midi - 66) / 24));
+  if (timbre === 'strings') return 0.55;
+  if (timbre === 'sine') return -0.5;
+  return 0;
+}
+
+/** Stereo version of a demo track: each note placed with an equal-power pan law. Returns [left, right]. */
+export function renderTrackStereo(id: GeneratedTrackId, sampleRate: number): [Float32Array, Float32Array] {
+  const notes = id === 'rain' ? rainNotes() : id === 'bloom' ? bloomNotes() : voicesNotes();
+  const end = Math.max(...notes.map((n) => n.t + n.dur)) + 1;
+  const len = Math.ceil(end * sampleRate);
+  const left = new Float32Array(len);
+  const right = new Float32Array(len);
+  notes.forEach((n, i) => {
+    const fade = n.timbre === 'strings' || n.timbre === 'voice' ? 200 : n.timbre === 'sine' ? 40 : 15;
+    const tone = renderTone(n.timbre, n.midi, sampleRate, { durationMs: n.dur * 1000, fadeMs: fade, velocity: n.vel, seed: i + 1 });
+    const theta = ((panFor(n.timbre, n.midi) + 1) * Math.PI) / 4;
+    // ×√2 so a centred note is as loud in each ear as in the mono version.
+    const gl = Math.cos(theta) * Math.SQRT2;
+    const gr = Math.sin(theta) * Math.SQRT2;
+    const offset = Math.round(n.t * sampleRate);
+    for (let k = 0; k < tone.length && offset + k < len; k++) {
+      left[offset + k] += tone[k] * gl;
+      right[offset + k] += tone[k] * gr;
+    }
+  });
+  // Normalize on the mid (mono) signal so the stereo track matches the mono loudness target.
+  const mid = left.map((l, k) => (l + right[k]) / 2);
+  let gain = 10 ** ((TARGET_LOUDNESS_LUFS - measureLoudness(mid, sampleRate)) / 20);
+  let peak = 0;
+  for (let k = 0; k < len; k++) peak = Math.max(peak, Math.abs(left[k]), Math.abs(right[k]));
+  if (peak * gain > 0.89) gain = 0.89 / peak;
+  for (let k = 0; k < len; k++) {
+    left[k] *= gain;
+    right[k] *= gain;
+  }
+  return [left, right];
 }
 
 export function renderTrack(id: GeneratedTrackId, sampleRate: number): Float32Array {

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { SpatialTracker, sideWord } from '../audio/spatial';
 import type * as Tone from 'tone';
 import { ANALYSIS, STIMULI, TIMBRE_LABELS, midiToName } from '../config/stimuli';
 import { useApp } from '../store/app';
@@ -9,6 +10,7 @@ import {
   playSource,
   prepareStimuli,
   readFrame,
+  readStereo,
   resumeSource,
   sampleRate,
   startMic,
@@ -97,6 +99,9 @@ function Visualizer() {
   const [fps, setFps] = useState<number | null>(null);
   const [view, setView] = useState<View>('associator');
   const [style, setStyle] = useState<VisualStyle>('fireworks');
+  const [stereo, setStereo] = useState(true);
+  const stereoRef = useRef(stereo);
+  stereoRef.current = stereo;
   const camera = useRef<{ stream: MediaStream; el: HTMLVideoElement } | null>(null);
   const showFps = typeof location !== 'undefined' && new URLSearchParams(location.search).has('fps');
 
@@ -109,6 +114,8 @@ function Visualizer() {
     let disposed = false;
     let onResize: (() => void) | null = null;
     const frame = new Float32Array(ANALYSIS.frameSize);
+    const left = new Float32Array(ANALYSIS.frameSize);
+    const right = new Float32Array(ANALYSIS.frameSize);
     (async () => {
       const refs = await getReferences();
       if (disposed) return;
@@ -116,6 +123,7 @@ function Visualizer() {
       const scene = new AssociatorScene(canvasRef.current!, 320);
       const field = new ParticleField({ reducedMotion: prefs.reducedMotion, intensity, aspect: scene.aspect, style });
       const mapper = new LiveMapper(sampleRate(), refs, map);
+      const spatial = new SpatialTracker(sampleRate());
       live.current = { mapper, field, scene };
       onResize = () => {
         scene.resize();
@@ -131,6 +139,10 @@ function Visualizer() {
         last = now;
         readFrame(frame);
         const s = mapper.step(frame, now, dt * 1000);
+        readStereo(left, right);
+        const f = s.features;
+        const sp = spatial.step(left, right, f.pitched ? f.pitchHz : null, dt * 1000);
+        const space = stereoRef.current && sp.active ? { pan: sp.pan, width: sp.width } : null;
         field.update(
           {
             color: s.color,
@@ -140,6 +152,7 @@ function Visualizer() {
             flatness: s.features.flatness,
             silent: s.features.silent || !isPlaying(),
             timbre: topTimbre(s.weights),
+            space,
           },
           dt,
           now / 1000,
@@ -150,7 +163,8 @@ function Visualizer() {
           setReadout(
             s.features.silent || s.midi == null
               ? 'Listening…'
-              : `Closest to ${TIMBRE_LABELS[topTimbre(s.weights)].toLowerCase()}, around ${midiToName(s.midi)}`,
+              : `Closest to ${TIMBRE_LABELS[topTimbre(s.weights)].toLowerCase()}, around ${midiToName(s.midi)}` +
+                  (space && sideWord(space.pan) ? `, ${sideWord(space.pan)}` : ''),
           );
         }
         frames++;
@@ -407,6 +421,14 @@ function Visualizer() {
         >
           Reduce motion: {prefs.reducedMotion ? 'on' : 'off'}
         </button>
+        <button
+          className="switch"
+          aria-pressed={stereo}
+          aria-describedby="stereo-note"
+          onClick={() => setStereo((v) => !v)}
+        >
+          Left/right: {stereo ? 'on' : 'off'}
+        </button>
         <label>
           <span className="visually-hidden">View</span>
           <select value={view} onChange={(e) => setView(e.target.value as View)} aria-describedby="view-note">
@@ -426,6 +448,10 @@ function Visualizer() {
         Fireworks burst on each note. Water drops send out ripples. Geometry draws a curve for each note: its shape
         comes from the instrument and its symmetry from the note. Soft glow drifts slowly.
         {prefs.reducedMotion ? ' Only soft glow is available while reduced motion is on.' : ''}
+      </span>
+      <span id="stereo-note" className="visually-hidden">
+        With left/right on, a sound in the left speaker appears on the left of the screen, and a wide, spacious sound
+        spreads out. Mono sounds, like the microphone, stay spread across the whole screen.
       </span>
       <span id="view-note" className="visually-hidden">
         Camera view shows your colors over your camera. The picture stays on this device and is never recorded.

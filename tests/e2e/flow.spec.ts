@@ -262,3 +262,28 @@ test('recorded track: 氤氲之森 by CMJ loads from the site and drives the vis
   await page.getByRole('button', { name: 'About and credits' }).click();
   await expect(page.getByText(/by CMJ, used with permission/)).toBeVisible();
 });
+
+test('stereo: a demo track places sounds left and right, and the switch turns it off', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate((fp) => localStorage.setItem('colorFingerprint.fingerprint', JSON.stringify(fp)), seededFingerprint(0));
+  await page.reload();
+  await page.getByRole('button', { name: 'Start over' }).click();
+  await page.getByLabel(/wearing headphones/).check();
+  await page.getByLabel(/moving light and color/).check();
+  await page.getByRole('button', { name: 'Play test tone' }).click();
+  await page.getByRole('button', { name: 'Play test tone again' }).waitFor();
+  await page.getByRole('button', { name: 'Hear music in your colors' }).click();
+  await page.getByRole('button', { name: 'Start the visualizer' }).click();
+  await page.mouse.move(300, 300);
+  await page.getByRole('combobox', { name: 'Music' }).selectOption('bloom');
+  const status = page.locator('.immersive .status');
+  await expect(status).toContainText(/on the left/, { timeout: 30000 });
+  await expect(status).toContainText(/on the right/, { timeout: 30000 });
+  await page.mouse.move(310, 300);
+  const sw = page.getByRole('button', { name: /Left\/right/ });
+  await expect(sw).toHaveAttribute('aria-pressed', 'true');
+  await sw.click();
+  await expect(sw).toHaveAttribute('aria-pressed', 'false');
+  await page.waitForTimeout(1500);
+  await expect(status).not.toContainText(/on the (left|right)/);
+});

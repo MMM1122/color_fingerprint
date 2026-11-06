@@ -16,6 +16,10 @@ export const DEFAULT_VOLUME = 0.25;
 
 let master: Tone.Gain | null = null;
 let analyser: AnalyserNode | null = null;
+/** Stereo taps for the spatial view: a 2-channel input split into left and right analysers. */
+let stereoIn: GainNode | null = null;
+let analyserL: AnalyserNode | null = null;
+let analyserR: AnalyserNode | null = null;
 let volume = DEFAULT_VOLUME;
 const stimulusBuffers = new Map<string, Tone.ToneAudioBuffer>();
 const stimulusArrays = new Map<string, Float32Array>();
@@ -38,8 +42,25 @@ function ensureGraph() {
     analyser = audioContext().createAnalyser();
     analyser.fftSize = ANALYSIS.frameSize;
     analyser.smoothingTimeConstant = 0;
+    const ctx = audioContext();
+    // 'speakers' upmixing copies a mono source to both sides, so mono reads as centred.
+    // Factory method, not `new GainNode`, because Tone's context is a wrapper around the native one.
+    stereoIn = ctx.createGain();
+    stereoIn.channelCount = 2;
+    stereoIn.channelCountMode = 'explicit';
+    stereoIn.channelInterpretation = 'speakers';
+    const split = ctx.createChannelSplitter(2);
+    analyserL = ctx.createAnalyser();
+    analyserR = ctx.createAnalyser();
+    for (const a of [analyserL, analyserR]) {
+      a.fftSize = ANALYSIS.frameSize;
+      a.smoothingTimeConstant = 0;
+    }
+    stereoIn.connect(split);
+    split.connect(analyserL, 0);
+    split.connect(analyserR, 1);
   }
-  return { master: master!, analyser: analyser! };
+  return { master: master!, analyser: analyser!, stereoIn: stereoIn! };
 }
 
 /**
@@ -238,8 +259,8 @@ export function trackBuffer(id: TrackId): Promise<Tone.ToneAudioBuffer> {
   }
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('./trackWorker.ts', import.meta.url), { type: 'module' });
-    worker.onmessage = (e: MessageEvent<{ buffer: Float32Array }>) => {
-      const buf = Tone.ToneAudioBuffer.fromArray(e.data.buffer);
+    worker.onmessage = (e: MessageEvent<{ left: Float32Array; right: Float32Array }>) => {
+      const buf = Tone.ToneAudioBuffer.fromArray([e.data.left, e.data.right]);
       trackCache.set(id, buf);
       worker.terminate();
       resolve(buf);
@@ -260,7 +281,7 @@ export async function decodeFile(file: File): Promise<Tone.ToneAudioBuffer> {
 
 export function playSource(buffer: Tone.ToneAudioBuffer, loop = true): void {
   assertGate();
-  const { master, analyser } = ensureGraph();
+  const { master, analyser, stereoIn } = ensureGraph();
   stopSource();
   current = new Tone.Player(buffer);
   current.loop = loop;
@@ -268,6 +289,7 @@ export function playSource(buffer: Tone.ToneAudioBuffer, loop = true): void {
   current.fadeOut = 0.3;
   current.connect(master);
   current.connect(analyser); // analysis is pre-volume, so volume never changes the visuals
+  current.connect(stereoIn);
   current.start();
 }
 
@@ -308,7 +330,7 @@ let micGeneration = 0;
  */
 export async function startMic(): Promise<void> {
   assertGate();
-  const { analyser } = ensureGraph();
+  const { analyser, stereoIn } = ensureGraph();
   stopSource();
   const gen = ++micGeneration;
   const stream = await navigator.mediaDevices.getUserMedia({
@@ -322,6 +344,7 @@ export async function startMic(): Promise<void> {
   micStream = stream;
   micNode = audioContext().createMediaStreamSource(stream);
   micNode.connect(analyser);
+  micNode.connect(stereoIn);
 }
 
 /** Stop the microphone completely (the browser's recording indicator turns off). */
@@ -338,6 +361,13 @@ export function micActive(): boolean {
 }
 
 /** Copy the latest analysis frame (2048 samples) into `out`. */
+/** Left and right time-domain frames for the spatial view. */
+export function readStereo(outL: Float32Array<ArrayBuffer>, outR: Float32Array<ArrayBuffer>): void {
+  ensureGraph();
+  analyserL!.getFloatTimeDomainData(outL);
+  analyserR!.getFloatTimeDomainData(outR);
+}
+
 export function readFrame(out: Float32Array<ArrayBuffer>): void {
   ensureGraph().analyser.getFloatTimeDomainData(out);
 }

@@ -39,6 +39,14 @@ Supabase. **To put it live, follow [DEPLOY.md](DEPLOY.md).**
     shape. A pure tone's Lissajous figure uses the just-intonation ratio of the note above C, so a G (a
     fifth, 3:2) draws a simple figure and dissonant intervals draw denser ones.
   - *Soft glow*: the slow, blurred "mind's eye" field.
+- **Left/right space** (on by default; switch in the visualizer). The left and right channels are analysed
+  separately, so a sound in the left speaker appears on the left of the screen and pitch still sets the
+  height: the screen becomes a 2-D sound stage. Position is measured at the current note's harmonics, so in
+  a mix the instruments can land in different places. Wide, spacious sound (low left–right correlation,
+  e.g. reverb) spreads shapes out. Mono sources (microphone, the calibration sounds) keep the full-width
+  spread, and the 60 test sounds stay centred so position never biases a color choice. The built-in tracks
+  are now stereo: piano spread like a keyboard (low left, high right), strings right, pure tone left,
+  voice centre. Code: `src/audio/spatial.ts`.
 - **Accounts (optional):** email + password sign-in and sync across devices (Supabase Auth + Postgres
   with row-level security). Sign out clears the device's copy; delete account removes everything.
   Without the two `VITE_SUPABASE_*` settings the site runs with no account features.
