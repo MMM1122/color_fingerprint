@@ -33,7 +33,8 @@ Supabase. **To put it live, follow [DEPLOY.md](DEPLOY.md).**
 - **Visual styles** (pick in the visualizer's Style menu). Reduced motion always uses soft glow.
   - *Fireworks* (default): each note bursts into sharp sparks at its height, in your color for that note.
   - *Water drops*: each note lands like a drop and sends out rings. Higher notes make smaller, quicker rings.
-  - *Geometry*: each note draws a mathematical curve, traced like a spirograph pen, then turns slowly.
+  - *Constellation*: each note becomes a star at its pitch height in your color; thin lines join the stars
+    from left to right, so the melody draws its own outline. A pause starts a new constellation.
     The instrument picks the curve family (piano: rose, strings: spirograph, pure tone: Lissajous,
     voice: flower). The note's pitch class sets the symmetry (3–11 petals or lobes), so octaves share a
     shape. A pure tone's Lissajous figure uses the just-intonation ratio of the note above C, so a G (a
@@ -86,7 +87,8 @@ src/mapping/personalMap.ts  anchors → color for any pitch/timbre blend; smooth
 src/mapping/defaultMap.ts   "a generic mapping" for the comparison toggle
 src/visuals/safety.ts       flash limiter + independent WCAG flash counter
 src/visuals/particles.ts    CPU sim for every style + luminance model (testable headlessly)
-src/visuals/shapes.ts       water-drop rings and geometry curves (rose, spirograph, Lissajous, flower)
+src/visuals/shapes.ts       water-drop rings
+src/visuals/constellation.ts  constellation stars, lines and background dust
 src/visuals/scene.ts        Three.js instanced glows, spark streaks, rings, curve dots, camera layer, one bloom pass
 src/visuals/shareCard.ts    share card PNG (palette + title)
 src/screens/                Landing, Setup, Calibration, ColorPicker, Results, Guide, Immersive, Share, Info
@@ -157,7 +159,7 @@ These are places where the build departs from, or fills a gap in, the spec. Each
 - **Mic and camera:** requested only when picked, stopped (tracks ended) when you switch away or leave,
   including if you switch away while the permission prompt is still open. The mic never plays through
   the speakers. Nothing is recorded or uploaded.
-- **Flashes (fireworks, water drops, geometry):** at most 4 bursts, 3 drops or 2 figures per second; each
+- **Flashes (fireworks, water drops, constellation):** at most 4 bursts, 3 drops or 4 stars per second; each
   covers a small part of the screen and fades over ≥ 0.9 s. All light still passes through the limiter below,
   and the 10-clicks-per-second test runs for every style.
 - **Flashes (soft glow):** particles fade in over ≥ 0.35 s (0.9 s with reduced motion) and out over ≥ 1.6 s, and spawns

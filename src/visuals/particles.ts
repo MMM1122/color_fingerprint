@@ -21,14 +21,15 @@ import { MAP_MIDI_MAX, MAP_MIDI_MIN, SAFETY } from '../config/stimuli';
 import type { Oklch } from '../types';
 import { hueDelta, oklchToRgb01, relativeLuminance } from '../science/color';
 import { FlashLimiter, defaultLimiterOptions } from './safety';
-import { CURVE_FOR, PATTERNS, Patterns, RIPPLES, Ripples, curvePoints } from './shapes';
+import { RIPPLES, Ripples } from './shapes';
+import { CONSTELLATION, Constellation, starAlpha } from './constellation';
 import type { Timbre } from '../types';
 
-export type VisualStyle = 'fireworks' | 'ripples' | 'geometry' | 'glow';
+export type VisualStyle = 'fireworks' | 'ripples' | 'constellation' | 'glow';
 export const VISUAL_STYLES: { id: VisualStyle; label: string }[] = [
   { id: 'fireworks', label: 'Fireworks' },
   { id: 'ripples', label: 'Water drops' },
-  { id: 'geometry', label: 'Geometry' },
+  { id: 'constellation', label: 'Constellation' },
   { id: 'glow', label: 'Soft glow' },
 ];
 
@@ -51,7 +52,7 @@ export type FieldInput = {
   onset: boolean;
   flatness: number;
   silent: boolean;
-  /** Closest timbre right now (picks the geometry curve). */
+  /** Closest timbre right now. */
   timbre?: Timbre;
   /** Stereo position of the sound, when the source is stereo. null = mono, use the whole width. */
   space?: { pan: number; width: number } | null;
@@ -137,7 +138,7 @@ export class ParticleField {
   }));
   readonly sparks = new Sparks();
   readonly ripples = new Ripples();
-  readonly patterns = new Patterns();
+  readonly constellation: Constellation;
   private lumLimiter: FlashLimiter;
   private redLimiter: FlashLimiter;
   private spawnCredit = 0;
@@ -154,6 +155,7 @@ export class ParticleField {
   private bgLab: Oklch = [0.1, 0, 0];
 
   constructor(public opts: FieldOptions, private rng: () => number = Math.random) {
+    this.constellation = new Constellation(rng);
     this.lumLimiter = new FlashLimiter(defaultLimiterOptions(opts.reducedMotion));
     this.redLimiter = new FlashLimiter(defaultLimiterOptions(opts.reducedMotion));
   }
@@ -272,25 +274,34 @@ export class ParticleField {
     this.lastBurst = now;
   }
 
-  /** One geometric figure at the note's height. */
-  private pattern(color: Oklch, midi: number, loud: number, timbre: Timbre, now: number) {
-    const P = PATTERNS;
-    const p = this.patterns.take();
-    const t = this.heightFor(midi);
+  /** One star at the note's height, joined to the previous star by a thin line. */
+  private star(color: Oklch, midi: number, loud: number, now: number) {
+    const D = CONSTELLATION;
+    const cs = this.constellation;
     const a = this.opts.aspect;
-    p.active = true;
-    p.kind = CURVE_FOR[timbre];
-    p.unit = curvePoints(p.kind, midi, P.pointsPerPattern);
-    p.size = (P.size[0] + (P.size[1] - P.size[0]) * loud) * (0.75 + 0.25 * this.opts.intensity);
-    p.cx = this.x((a - p.size) * 0.9);
-    p.cy = Math.max(-1 + p.size, Math.min(1 - p.size, -0.7 + t * 1.4));
-    p.angle = this.rng() * Math.PI * 2;
-    p.spin = (P.spin[0] + (P.spin[1] - P.spin[0]) * this.rng()) * (this.rng() < 0.5 ? -1 : 1);
-    p.age = 0;
-    p.life = P.life[0] + (P.life[1] - P.life[0]) * this.rng();
-    p.rgb = oklchToRgb01(color);
-    p.lum = relativeLuminance(p.rgb);
-    p.red = redness(color);
+    const { col, continues } = cs.nextColumn(now);
+    const step = (2 * a * 0.9) / D.columns;
+    let x = -a * 0.9 + (col + 0.5) * step + (this.rng() - 0.5) * step * 0.3;
+    if (this.space) x += this.space.pan * step * D.panLean;
+    const y = -0.78 + this.heightFor(midi) * 1.56;
+    const prev = cs.last;
+    const s = cs.take();
+    s.link =
+      continues && prev && prev.active && prev !== s
+        ? { x: prev.x, y: prev.y, rgb: prev.rgb, ageOffset: prev.age, life: prev.life, lum: prev.lum, red: prev.red }
+        : null;
+    s.active = true;
+    s.x = x;
+    s.y = y;
+    s.size = (D.size[0] + (D.size[1] - D.size[0]) * loud) * (0.75 + 0.25 * this.opts.intensity);
+    s.rgb = oklchToRgb01(color);
+    s.lum = relativeLuminance(s.rgb);
+    s.red = redness(color);
+    s.age = 0;
+    s.life = D.life[0] + (D.life[1] - D.life[0]) * this.rng();
+    s.alpha = 0;
+    cs.last = s;
+    cs.lastAt = now;
     this.recentBursts.push(now);
     this.lastBurst = now;
   }
@@ -317,12 +328,10 @@ export class ParticleField {
         const want = input.onset || (now - this.lastBurst > RIPPLES.idleDropEvery && this.loud > 0.08);
         if (want && this.recentBursts.length < RIPPLES.maxDropsPerSec) this.drop(input.color, input.midi, this.loud, now);
         this.spawnCredit += dt * 0.4;
-      } else if (style === 'geometry') {
-        const want = input.onset || (now - this.lastBurst > PATTERNS.idleEvery && this.loud > 0.08);
-        if (want && this.recentBursts.length < PATTERNS.maxPerSec) {
-          this.pattern(input.color, input.midi, this.loud, input.timbre ?? 'piano', now);
-        }
-        this.spawnCredit += dt * 0.4;
+      } else if (style === 'constellation') {
+        const want = input.onset || (now - this.lastBurst > CONSTELLATION.idleEvery && this.loud > 0.08);
+        if (want && this.recentBursts.length < CONSTELLATION.maxPerSec) this.star(input.color, input.midi, this.loud, now);
+        this.spawnCredit += dt * 0.3;
       } else {
         this.spawnCredit += dt * (r ? 1.2 : 2 + 4 * this.loud);
         if (input.onset && !r) this.spawnCredit += 1.5;
@@ -430,45 +439,60 @@ export class ParticleField {
       red += rp.alpha[i] * rp.red[i] * cover * (1 + BLOOM_GAIN);
     }
 
-    // ---- Patterns: pen traces the curve, then it turns slowly and fades ----
-    const pats = this.patterns;
-    const P = PATTERNS;
-    let d = 0;
-    for (const pt of pats.list) {
-      if (!pt.active) continue;
-      pt.age += dt;
-      if (pt.age >= pt.life) {
-        pt.active = false;
+    // ---- Constellation: stars twinkle in and fade slowly; lines draw in, fading with the older star ----
+    const cs = this.constellation;
+    const D = CONSTELLATION;
+    const gain = 0.95 * (0.65 + 0.35 * this.opts.intensity);
+    let ns = 0;
+    let nl = 0;
+    for (const st of cs.stars) {
+      if (!st.active) continue;
+      st.age += dt;
+      if (st.age >= st.life) {
+        st.active = false;
+        st.alpha = 0;
+        if (cs.last === st) cs.last = null;
         continue;
       }
-      pt.angle += pt.spin * dt;
-      const drawn = Math.min(1, pt.age / P.drawSeconds);
-      const fout = Math.min(1, (pt.life - pt.age) / (pt.life * 0.45));
-      const fin = Math.min(1, pt.age / P.fadeIn);
-      const base = 0.5 * fin * fout * (0.6 + 0.4 * this.opts.intensity);
-      const cos = Math.cos(pt.angle);
-      const sin = Math.sin(pt.angle);
-      const count = pt.unit.length / 2;
-      const head = drawn * (count - 1);
-      for (let k = 0; k < count; k++) {
-        if (k > head) break;
-        const ux = pt.unit[k * 2];
-        const uy = pt.unit[k * 2 + 1];
-        // The pen tip glows a little brighter while it is drawing.
-        const tip = drawn < 1 ? Math.max(0, 1 - (head - k) / 18) * 0.6 : 0;
-        pats.dots[d * 3] = pt.cx + (ux * cos - uy * sin) * pt.size;
-        pats.dots[d * 3 + 1] = pt.cy + (ux * sin + uy * cos) * pt.size;
-        pats.dots[d * 3 + 2] = Math.min(1, base * (1 + tip));
-        pats.dotRgb[d * 3] = pt.rgb[0] + (1 - pt.rgb[0]) * tip * 0.6;
-        pats.dotRgb[d * 3 + 1] = pt.rgb[1] + (1 - pt.rgb[1]) * tip * 0.6;
-        pats.dotRgb[d * 3 + 2] = pt.rgb[2] + (1 - pt.rgb[2]) * tip * 0.6;
-        const cover = (Math.PI * (2 * P.dot) ** 2 * 0.5) / area;
-        lum += pats.dots[d * 3 + 2] * pt.lum * cover * (1 + BLOOM_GAIN);
-        red += pats.dots[d * 3 + 2] * pt.red * cover * (1 + BLOOM_GAIN);
-        d++;
+      st.alpha = starAlpha(st.age, st.life) * gain;
+      cs.starBuf.set([st.x, st.y, Math.min(1, st.alpha), st.size], ns * 4);
+      cs.starRgb.set(st.rgb, ns * 3);
+      ns++;
+      // Core + halo of the star shader cover about 5.1·size² at full intensity.
+      const cover = (5.1 * st.size * st.size) / area;
+      lum += st.alpha * st.lum * cover * (1 + BLOOM_GAIN);
+      red += st.alpha * st.red * cover * (1 + BLOOM_GAIN);
+      const ln = st.link;
+      if (ln) {
+        const drawn = Math.min(1, st.age / D.drawSeconds);
+        const prevAlpha = starAlpha(st.age + ln.ageOffset, ln.life);
+        const la = D.lineAlpha * gain * Math.min(prevAlpha, starAlpha(Math.max(st.age, D.twinkleFor), st.life));
+        if (la > 0.002) {
+          const x2 = ln.x + (st.x - ln.x) * drawn;
+          const y2 = ln.y + (st.y - ln.y) * drawn;
+          cs.lineBuf.set([ln.x, ln.y, x2, y2], nl * 4);
+          cs.lineA.set([ln.rgb[0], ln.rgb[1], ln.rgb[2], la], nl * 4);
+          cs.lineB.set([st.rgb[0], st.rgb[1], st.rgb[2], la], nl * 4);
+          nl++;
+          const len = Math.hypot(x2 - ln.x, y2 - ln.y);
+          const lc = (len * D.lineWidth * 2.4) / area;
+          lum += la * ((ln.lum + st.lum) / 2) * lc * (1 + BLOOM_GAIN);
+          red += la * ((ln.red + st.red) / 2) * lc * (1 + BLOOM_GAIN);
+        }
       }
     }
-    pats.dotCount = d;
+    if (style === 'constellation') {
+      // Background dust: faint, slow, gray; it never carries color so it can't be mistaken for a note.
+      for (let i = 0; i < D.dust; i++) {
+        const al = cs.dust[i * 4 + 3] * (1 + 0.3 * Math.sin(now * 0.5 + cs.dust[i * 4 + 2]));
+        cs.starBuf.set([cs.dust[i * 4] * this.opts.aspect, cs.dust[i * 4 + 1], al, D.dustSize], ns * 4);
+        cs.starRgb.set([0.82, 0.84, 0.9], ns * 3);
+        ns++;
+        lum += al * 0.7 * ((5.1 * D.dustSize * D.dustSize) / area);
+      }
+    }
+    cs.starCount = ns;
+    cs.lineCount = nl;
 
     lum = Math.min(lum, 1);
     this.rawLuminance = lum;

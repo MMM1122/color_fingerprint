@@ -69,8 +69,8 @@ function Warning({ onContinue }: { onContinue(): void }) {
         </label>
         <p className="quiet">
           {prefs.reducedMotion
-            ? 'With reduced motion on, you get the soft glow style. Untick it to see fireworks, water drops or geometry.'
-            : 'You will start with fireworks: each note bursts into sparks in your color. Switch to water drops or geometry in the controls.'}
+            ? 'With reduced motion on, you get the soft glow style. Untick it to see fireworks, water drops or constellations.'
+            : 'You will start with fireworks: each note bursts into sparks in your color. Switch to water drops or constellations in the controls.'}
         </p>
         <div className="row">
           <button className="primary" autoFocus onClick={onContinue}>Start the visualizer</button>
@@ -340,7 +340,7 @@ function Visualizer() {
         {showFps && fps != null && <span> ({fps} fps)</span>}
         {prefs.reducedMotion && (
           <span className="rm-note">
-            Reduced motion is on, so fireworks, water drops and geometry are off. Change it in the controls below.
+            Reduced motion is on, so fireworks, water drops and constellations are off. Change it in the controls below.
           </span>
         )}
       </div>
@@ -445,8 +445,9 @@ function Visualizer() {
         <button onClick={() => go('results')}>Exit</button>
       </div>
       <span id="style-note" className="visually-hidden">
-        Fireworks burst on each note. Water drops send out ripples. Geometry draws a curve for each note: its shape
-        comes from the instrument and its symmetry from the note. Soft glow drifts slowly.
+        Fireworks burst on each note. Water drops send out ripples. Constellation places a star for each note at
+        its pitch height and joins the stars with thin lines, so the melody draws its own outline. Soft glow drifts
+        slowly.
         {prefs.reducedMotion ? ' Only soft glow is available while reduced motion is on.' : ''}
       </span>
       <span id="stereo-note" className="visually-hidden">

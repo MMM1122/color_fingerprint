@@ -45,7 +45,7 @@ describe('safety test from spec section 8', () => {
       const start = Math.round((k / 10) * SR);
       for (let i = 0; i < 400; i++) audio[start + i] = 0.95 * (i % 2 ? 1 : -1) * Math.exp(-i / 80);
     }
-    for (const [reducedMotion, style] of [[false, 'fireworks'], [false, 'ripples'], [false, 'geometry'], [false, 'glow'], [true, 'glow']] as const) {
+    for (const [reducedMotion, style] of [[false, 'fireworks'], [false, 'ripples'], [false, 'constellation'], [false, 'glow'], [true, 'glow']] as const) {
       const fx = new FeatureExtractor(SR);
       const field = new ParticleField({ reducedMotion, intensity: 1, aspect: 16 / 9, style }, mulberry32(3));
       const shown: number[] = [];
@@ -89,18 +89,18 @@ describe('fireworks', () => {
   });
 });
 
-describe('water drops and geometry', () => {
-  const run = (style: 'ripples' | 'geometry', onsetsPerSec: number, seconds: number) => {
+describe('water drops and constellation', () => {
+  const run = (style: 'ripples' | 'constellation', onsetsPerSec: number, seconds: number, midiAt = (_f: number) => 67) => {
     const field = new ParticleField({ reducedMotion: false, intensity: 1, aspect: 16 / 9, style }, mulberry32(4));
     let maxRings = 0;
-    let maxPatterns = 0;
+    let maxStars = 0;
     const every = Math.round(FPS / onsetsPerSec);
     for (let f = 0; f < FPS * seconds; f++) {
-      field.update({ color: [0.75, 0.14, 210], midi: 67, rms: 0.3, onset: f % every === 0, flatness: 0.1, silent: false, timbre: 'sine' }, 1 / FPS, f / FPS);
+      field.update({ color: [0.75, 0.14, 210], midi: midiAt(f), rms: 0.3, onset: f % every === 0, flatness: 0.1, silent: false, timbre: 'sine' }, 1 / FPS, f / FPS);
       maxRings = Math.max(maxRings, field.ripples.active.reduce((a, b) => a + b, 0));
-      maxPatterns = Math.max(maxPatterns, field.patterns.list.filter((p) => p.active).length);
+      maxStars = Math.max(maxStars, field.constellation.activeCount());
     }
-    return { field, maxRings, maxPatterns };
+    return { field, maxRings, maxStars };
   };
 
   it('drops make rings, capped per second, and rings grow then fade', () => {
@@ -113,12 +113,36 @@ describe('water drops and geometry', () => {
     expect(field.ripples.active.reduce((a, b) => a + b, 0)).toBe(0);
   });
 
-  it('geometry draws curves (≤ 2 per second), traces them in, and fades out', () => {
-    const { field, maxPatterns } = run('geometry', 20, 3);
-    expect(maxPatterns).toBeGreaterThanOrEqual(2);
-    expect(maxPatterns).toBeLessThanOrEqual(7);
-    expect(field.patterns.dotCount).toBeGreaterThan(400);
-    for (let f = 0; f < FPS * 5; f++) field.update({ color: null, midi: null, rms: 0, onset: false, flatness: 0, silent: true }, 1 / FPS, 3 + f / FPS);
-    expect(field.patterns.dotCount).toBe(0);
+  it('constellation: ≤ 4 stars per second, higher notes sit higher, stars move left to right, joined by lines', () => {
+    // A rising scale: one note per onset.
+    const { field, maxStars } = run('constellation', 3, 4, (f) => 50 + Math.floor(f / 20) * 2);
+    expect(maxStars).toBeGreaterThanOrEqual(10);
+    expect(maxStars).toBeLessThanOrEqual(4 * 4);
+    const stars = field.constellation.stars.filter((s) => s.active).sort((a, b) => a.x - b.x);
+    for (let i = 1; i < stars.length; i++) expect(stars[i].y).toBeGreaterThanOrEqual(stars[i - 1].y - 1e-9);
+    expect(field.constellation.lineCount).toBeGreaterThanOrEqual(stars.length - 2);
+    // Dust is drawn as well, and it is gray.
+    expect(field.constellation.starCount).toBe(stars.length + 70);
+  });
+
+  it('constellation: a pause starts a new constellation (no line across the gap), and stars fade out', () => {
+    const { field } = run('constellation', 3, 2);
+    const quiet = { color: null, midi: null, rms: 0, onset: false, flatness: 0, silent: true } as const;
+    for (let f = 0; f < FPS * 3; f++) field.update(quiet, 1 / FPS, 2 + f / FPS);
+    field.update({ color: [0.75, 0.14, 210], midi: 67, rms: 0.3, onset: true, flatness: 0.1, silent: false }, 1 / FPS, 5.1);
+    expect(field.constellation.last!.link).toBeNull();
+    for (let f = 0; f < FPS * 13; f++) field.update(quiet, 1 / FPS, 5.2 + f / FPS);
+    expect(field.constellation.activeCount()).toBe(0);
+    expect(field.constellation.lineCount).toBe(0);
+  });
+
+  it('constellation: with stereo on, a star leans toward its side within its column', () => {
+    const at = (pan: number) => {
+      const field = new ParticleField({ reducedMotion: false, intensity: 1, aspect: 16 / 9, style: 'constellation' }, mulberry32(1));
+      field.update({ color: [0.7, 0.14, 210], midi: 67, rms: 0.3, onset: true, flatness: 0.1, silent: false, space: { pan, width: 0 } }, 1 / FPS, 0);
+      return field.constellation.last!.x;
+    };
+    expect(at(1)).toBeGreaterThan(at(-1));
+    expect(at(1) - at(-1)).toBeLessThan(0.3); // within about one column
   });
 });

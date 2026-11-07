@@ -8,7 +8,8 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { SPARK_CAPACITY, STREAK_SECONDS, type ParticleField } from './particles';
-import { PATTERNS, RIPPLES } from './shapes';
+import { RIPPLES } from './shapes';
+import { CONSTELLATION } from './constellation';
 
 const vertex = /* glsl */ `
   attribute vec3 iOffset;   // x, y, size
@@ -111,28 +112,60 @@ const ringFragment = /* glsl */ `
   }
 `;
 
-/** Geometry: small crisp dots along each curve. */
-const dotVertex = /* glsl */ `
-  attribute vec3 iDot;      // x, y, alpha
+/** Constellation stars: a sharp core with a faint halo. Size is per star. */
+const starVertex = /* glsl */ `
+  attribute vec4 iStar;     // x, y, alpha, radius
   attribute vec3 iRgb;
-  uniform float uSize;
   varying vec2 vUv;
   varying vec4 vColor;
   void main() {
-    vUv = position.xy;
-    vColor = vec4(iRgb, iDot.z);
-    vec2 p = iDot.xy + position.xy * uSize * 4.0;
+    vUv = position.xy * 8.0;          // in units of the star's radius
+    vColor = vec4(iRgb, iStar.z);
+    vec2 p = iStar.xy + position.xy * iStar.w * 8.0;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 0.0, 1.0);
   }
 `;
 
-const dotFragment = /* glsl */ `
+const starFragment = /* glsl */ `
   uniform float uExposure;
   varying vec2 vUv;
   varying vec4 vColor;
   void main() {
-    float r = length(vUv) * 4.0;
-    float a = exp(-r * r * 1.4);
+    float r2 = dot(vUv, vUv);
+    float a = exp(-r2 * 1.2) + 0.12 * exp(-r2 * 0.15);
+    if (a < 0.004) discard;
+    gl_FragColor = vec4(vColor.rgb * a * vColor.a * uExposure, 1.0);
+  }
+`;
+
+/** Constellation lines: a thin soft line whose color fades from one star to the next. */
+const lineVertex = /* glsl */ `
+  attribute vec4 iSeg;      // x1, y1, x2, y2
+  attribute vec4 iColA;
+  attribute vec4 iColB;
+  uniform float uWidth;
+  varying float vAcross;
+  varying vec4 vColor;
+  void main() {
+    vec2 a = iSeg.xy;
+    vec2 b = iSeg.zw;
+    vec2 d = b - a;
+    float len = max(length(d), 1e-5);
+    vec2 n = vec2(-d.y, d.x) / len;
+    float t = position.x + 0.5;
+    vAcross = position.y * 6.0;       // in units of the line width
+    vColor = mix(iColA, iColB, t);
+    vec2 p = mix(a, b, t) + n * position.y * uWidth * 6.0;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 0.0, 1.0);
+  }
+`;
+
+const lineFragment = /* glsl */ `
+  uniform float uExposure;
+  varying float vAcross;
+  varying vec4 vColor;
+  void main() {
+    float a = exp(-vAcross * vAcross * 1.5);
     if (a < 0.004) discard;
     gl_FragColor = vec4(vColor.rgb * a * vColor.a * uExposure, 1.0);
   }
@@ -162,10 +195,15 @@ export class AssociatorScene {
   private ringMaterial: THREE.ShaderMaterial;
   private ringAttr: THREE.InstancedBufferAttribute;
   private ringColor: THREE.InstancedBufferAttribute;
-  private dotGeometry: THREE.InstancedBufferGeometry;
-  private dotMaterial: THREE.ShaderMaterial;
-  private dotAttr: THREE.InstancedBufferAttribute;
-  private dotRgb: THREE.InstancedBufferAttribute;
+  private starGeometry: THREE.InstancedBufferGeometry;
+  private starMaterial: THREE.ShaderMaterial;
+  private starAttr: THREE.InstancedBufferAttribute;
+  private starRgb: THREE.InstancedBufferAttribute;
+  private lineGeometry: THREE.InstancedBufferGeometry;
+  private lineMaterial: THREE.ShaderMaterial;
+  private lineAttr: THREE.InstancedBufferAttribute;
+  private lineA: THREE.InstancedBufferAttribute;
+  private lineB: THREE.InstancedBufferAttribute;
   aspect = 1;
 
   constructor(private canvas: HTMLCanvasElement, capacity: number) {
@@ -250,15 +288,26 @@ export class AssociatorScene {
     ringMesh.frustumCulled = false;
     this.scene.add(ringMesh);
 
-    // Geometry dots
-    const dotCap = PATTERNS.capacity * PATTERNS.pointsPerPattern;
-    this.dotAttr = new THREE.InstancedBufferAttribute(new Float32Array(dotCap * 3), 3).setUsage(THREE.DynamicDrawUsage);
-    this.dotRgb = new THREE.InstancedBufferAttribute(new Float32Array(dotCap * 3), 3).setUsage(THREE.DynamicDrawUsage);
-    this.dotGeometry = instanced({ iDot: this.dotAttr, iRgb: this.dotRgb });
-    this.dotMaterial = additive(dotVertex, dotFragment, { uSize: { value: PATTERNS.dot } });
-    const dotMesh = new THREE.Mesh(this.dotGeometry, this.dotMaterial);
-    dotMesh.frustumCulled = false;
-    this.scene.add(dotMesh);
+    // Constellation: lines first, stars on top
+    const dyn = (n: number, size: number) => new THREE.InstancedBufferAttribute(new Float32Array(n * size), size).setUsage(THREE.DynamicDrawUsage);
+    const lineCap = CONSTELLATION.capacity;
+    this.lineAttr = dyn(lineCap, 4);
+    this.lineA = dyn(lineCap, 4);
+    this.lineB = dyn(lineCap, 4);
+    this.lineGeometry = instanced({ iSeg: this.lineAttr, iColA: this.lineA, iColB: this.lineB });
+    this.lineMaterial = additive(lineVertex, lineFragment, { uWidth: { value: CONSTELLATION.lineWidth } });
+    const lineMesh = new THREE.Mesh(this.lineGeometry, this.lineMaterial);
+    lineMesh.frustumCulled = false;
+    this.scene.add(lineMesh);
+    const starCap = CONSTELLATION.capacity + CONSTELLATION.dust;
+    this.starAttr = dyn(starCap, 4);
+    this.starRgb = dyn(starCap, 3);
+    this.starGeometry = instanced({ iStar: this.starAttr, iRgb: this.starRgb });
+    this.starMaterial = additive(starVertex, starFragment);
+    const starMesh = new THREE.Mesh(this.starGeometry, this.starMaterial);
+    starMesh.frustumCulled = false;
+    starMesh.renderOrder = 2;
+    this.scene.add(starMesh);
 
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
@@ -383,16 +432,28 @@ export class AssociatorScene {
     this.ringColor.needsUpdate = true;
     this.ringMaterial.uniforms.uExposure.value = field.exposure;
 
-    // Geometry dots
-    const pd = field.patterns;
-    const dA = this.dotAttr.array as Float32Array;
-    const dC = this.dotRgb.array as Float32Array;
-    dA.set(pd.dots.subarray(0, pd.dotCount * 3));
-    for (let i = 0; i < pd.dotCount * 3; i++) dC[i] = toLinear(pd.dotRgb[i]);
-    this.dotGeometry.instanceCount = pd.dotCount;
-    this.dotAttr.needsUpdate = true;
-    this.dotRgb.needsUpdate = true;
-    this.dotMaterial.uniforms.uExposure.value = field.exposure;
+    // Constellation
+    const cs = field.constellation;
+    (this.starAttr.array as Float32Array).set(cs.starBuf.subarray(0, cs.starCount * 4));
+    const sR = this.starRgb.array as Float32Array;
+    for (let i = 0; i < cs.starCount * 3; i++) sR[i] = toLinear(cs.starRgb[i]);
+    this.starGeometry.instanceCount = cs.starCount;
+    this.starAttr.needsUpdate = true;
+    this.starRgb.needsUpdate = true;
+    this.starMaterial.uniforms.uExposure.value = field.exposure;
+    (this.lineAttr.array as Float32Array).set(cs.lineBuf.subarray(0, cs.lineCount * 4));
+    const lA = this.lineA.array as Float32Array;
+    const lB = this.lineB.array as Float32Array;
+    for (let i = 0; i < cs.lineCount * 4; i++) {
+      const alphaSlot = i % 4 === 3;
+      lA[i] = alphaSlot ? cs.lineA[i] : toLinear(cs.lineA[i]);
+      lB[i] = alphaSlot ? cs.lineB[i] : toLinear(cs.lineB[i]);
+    }
+    this.lineGeometry.instanceCount = cs.lineCount;
+    this.lineAttr.needsUpdate = true;
+    this.lineA.needsUpdate = true;
+    this.lineB.needsUpdate = true;
+    this.lineMaterial.uniforms.uExposure.value = field.exposure;
 
     this.material.uniforms.uExposure.value = field.exposure;
     this.material.uniforms.uTime.value = reducedMotion ? 0 : timeSec;
@@ -412,8 +473,10 @@ export class AssociatorScene {
     this.sparkMaterial.dispose();
     this.ringGeometry.dispose();
     this.ringMaterial.dispose();
-    this.dotGeometry.dispose();
-    this.dotMaterial.dispose();
+    this.starGeometry.dispose();
+    this.starMaterial.dispose();
+    this.lineGeometry.dispose();
+    this.lineMaterial.dispose();
     this.geometry.dispose();
     this.material.dispose();
     this.composer.dispose();
